@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minha agenda</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d1117;--panel:#151b23;--panel2:#1b232d;--line:#263241;--text:#e6edf3;--muted:#8b98a9;--dim:#5d6b7d;--accent:#1fbf75;--amber:#f5b83d;--red:#ff5b5f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 Inter,system-ui,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#0b7a4a);display:grid;place-items:center;font-weight:800;color:#04150d;flex:none}
+h1{margin:0;font-size:20px}.sub{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
+.sub i{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.next{border-color:rgba(31,191,117,.5);background:linear-gradient(180deg,rgba(31,191,117,.12),var(--panel))}
+.next .l{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--accent);text-transform:uppercase}
+.next h2{margin:6px 0 4px;font-size:22px}
+.muted{color:var(--muted)}.dim{color:var(--dim)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{background:var(--line);border-radius:7px;padding:3px 8px;font-size:12px;font-weight:600}
+.calhd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.calhd b{font-size:17px}
+.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#04150d}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.wd{text-align:center;font-size:11px;color:var(--muted);font-weight:700;padding:4px 0}
+.cd{aspect-ratio:1/1;border-radius:9px;background:var(--panel2);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700;font-size:14px;cursor:default;position:relative;color:var(--muted)}
+.cd.out{visibility:hidden}
+.cd.work{color:#0b0f14;border:0}
+.cd.today{box-shadow:0 0 0 2px var(--text)}
+.cd{overflow:hidden;min-width:0}
+.cd small{font-size:8px;font-weight:700;opacity:.85;max-width:100%;overflow:hidden;white-space:nowrap;padding:0 2px}
+.cd.sel{outline:3px solid #fff;outline-offset:1px}
+.list{display:flex;flex-direction:column;gap:8px}
+.row{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:11px;background:var(--panel2)}
+.dt{width:58px;text-align:center;flex:none}.dt b{display:block;font-size:17px}.dt span{font-size:11px;color:var(--dim)}
+.bar{width:4px;align-self:stretch;border-radius:4px;flex:none}
+.row h4{margin:0;font-size:15px}
+.empty{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:11px}
+.tabs{display:flex;gap:6px;margin-bottom:10px}
+.tabs button{flex:1}
+.tabs .on{border-color:var(--accent);color:var(--accent)}
+.foot{color:var(--dim);font-size:11px;text-align:center;margin-top:20px}
+.load{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg)}
+.spin{width:30px;height:30px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
+.flash{animation:fl 1.6s}@keyframes fl{0%{background:rgba(31,191,117,.35)}}
+</style>
+</head>
+<body>
+<div class="load" id="load"><div class="spin"></div></div>
+<div class="wrap" id="app"></div>
+<script>
+// Página pública (GitHub Pages). Lê os dados da planilha pelo App da Web, sem usar conta Google.
+const API = 'https://script.google.com/macros/s/AKfycbzC4SQUnbGNWFK7xlj0xUKbmoMuGYWDN-8AExukFuHmepDC1JiEgVLS3FiH1KIrv9to/exec';
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const DOW = ['dom','seg','ter','qua','qui','sex','sáb'];
+const PAL = ['#1fbf75','#4c9dff','#f5b83d','#a97cff','#19c2c2','#ff8a5c','#e86bb4','#9bd34a','#5ad1ff','#ffd166','#c49bff','#4fd1a5'];
+const S = { ag: null, month: null, tab: 'next', sel: null, sig: '' };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+const col = s => { let h = 0; for (const c of norm(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PAL[h % PAL.length]; };
+const P = iso => { const [y, m, d] = iso.split('-').map(Number); return { y, m: m - 1, d }; };
+const f = iso => { const p = P(iso); return String(p.d).padStart(2, '0') + '/' + String(p.m + 1).padStart(2, '0'); };
+const dow = iso => { const p = P(iso); return DOW[new Date(p.y, p.m, p.d).getDay()]; };
+const tIso = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
+
+async function fetchAg() {
+  if (!TOKEN) throw new Error('Link incompleto. Peça o seu link individual para a coordenação.');
+  const r = await fetch(API + '?f=json&t=' + encodeURIComponent(TOKEN) + '&_=' + Date.now(), { credentials: 'omit', cache: 'no-store' });
+  if (!r.ok) throw new Error('Não consegui carregar a agenda agora (erro ' + r.status + '). Tente de novo em instantes.');
+  const d = await r.json();
+  if (d.erro) throw new Error(d.erro);
+  return d;
+}
+function baixarIcs() {
+  const ag = S.ag, e = s => String(s || '').replace(/[\\;,]/g, c => '\\' + c).replace(/\n/g, '\\n');
+  const nx = iso => { const p = P(iso); const d = new Date(p.y, p.m, p.d + 1); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Escala Tecnica//PT-BR', 'X-WR-CALNAME:' + e('Escala · ' + ag.nome)];
+  ag.runs.forEach(r => L.push('BEGIN:VEVENT', 'UID:' + norm(r.evento + r.role + r.from).replace(/[^A-Z0-9]/g, '') + '@escala', 'DTSTAMP:20260101T000000Z',
+    'DTSTART;VALUE=DATE:' + r.from.replace(/-/g, ''), 'DTEND;VALUE=DATE:' + nx(r.to), 'SUMMARY:' + e(r.evento + ' · ' + r.role), 'LOCATION:' + e(r.local),
+    'DESCRIPTION:' + e((r.os ? 'OS ' + r.os + '\n' : '') + r.days.map(d => f(d.date) + ' — ' + (d.phase || 'operação a definir')).join('\n')), 'END:VEVENT'));
+  L.push('END:VCALENDAR');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([L.join('\r\n')], { type: 'text/calendar' }));
+  a.download = 'minha-agenda.ics'; document.body.appendChild(a); a.click(); a.remove();
+}
+async function refresh(first) {
+  try {
+    const ag = await fetchAg();
+    const sig = JSON.stringify(ag.entries);
+    const changed = S.sig && sig !== S.sig;
+    S.ag = ag; S.sig = sig;
+    if (!S.month) { const t = tIso(); S.month = t.slice(0, 7); }
+    render(changed);
+  } catch (e) {
+    document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e && e.message || e)}</div>`;
+  }
+  document.getElementById('load').style.display = 'none';
+}
+function render(changed) {
+  const ag = S.ag, t = tIso();
+  document.title = 'Agenda · ' + ag.nome;
+  const future = ag.runs.filter(r => r.to >= t), past = ag.runs.filter(r => r.to < t).reverse();
+  const next = future[0];
+  const [y, m] = S.month.split('-').map(Number);
+  const inM = ag.entries.filter(e => e.date.slice(0, 7) === S.month);
+  const first = new Date(y, m - 1, 1).getDay(), dim = new Date(y, m, 0).getDate();
+  let cal = ['D','S','T','Q','Q','S','S'].map(w => `<div class="wd">${w}</div>`).join('');
+  for (let i = 0; i < first; i++) cal += '<div class="cd out"></div>';
+  for (let d = 1; d <= dim; d++) {
+    const iso = `${S.month}-${String(d).padStart(2, '0')}`, es = inM.filter(e => e.date === iso);
+    cal += `<div class="cd ${es.length ? 'work' : ''} ${iso === t ? 'today' : ''} ${S.sel === iso ? 'sel' : ''}" ${es.length ? `style="background:${col(es[0].evento)};cursor:pointer" onclick="S.sel='${iso}';render()"` : ''}>${d}${es.length ? `<small>${esc(es[0].evento.split(' ')[0].slice(0, 7))}</small>` : ''}</div>`;
+  }
+  const selList = S.sel ? ag.entries.filter(e => e.date === S.sel) : [];
+  const rowHtml = r => `<div class="row"><div class="dt"><b>${f(r.from)}</b><span>${dow(r.from)}${r.from !== r.to ? ' → ' + f(r.to) : ''}</span></div><div class="bar" style="background:${col(r.evento)}"></div>
+    <div><h4>${esc(r.evento)}</h4><div class="muted" style="font-size:13px">${esc(r.role)}${r.local ? ' · ' + esc(r.local) : ''}${r.os ? ' · ' + esc(r.os) : ''}</div>
+    <div class="chips">${r.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div></div>`;
+  const list = S.tab === 'next' ? future : past;
+  document.getElementById('app').innerHTML = `
+  <header><div class="logo">ET</div><div><h1>${esc(ag.nome)}</h1><div class="sub"><i></i>Agenda ao vivo · atualizada às ${new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
+  ${next ? `<div class="card next ${changed ? 'flash' : ''}"><div class="l">${next.from <= t ? 'Agora' : 'Próximo trabalho'}</div><h2>${esc(next.evento)}</h2>
+    <div class="muted">${f(next.from)} (${dow(next.from)})${next.from !== next.to ? ' até ' + f(next.to) : ''} · ${esc(next.role)}${next.local ? ' · ' + esc(next.local) : ''}</div>
+    <div class="chips">${next.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div>` : `<div class="card"><b>Nenhum trabalho futuro marcado.</b></div>`}
+  <div class="card ${changed ? 'flash' : ''}">
+    <div class="calhd"><button class="btn" onclick="mv(-1)">‹</button><b>${MESES[m - 1]} ${y}</b><button class="btn" onclick="mv(1)">›</button></div>
+    <div class="cal">${cal}</div>
+    ${S.sel ? `<div class="list" style="margin-top:12px">${selList.map(e => `<div class="row"><div class="bar" style="background:${col(e.evento)}"></div><div><h4>${f(e.date)} · ${esc(e.evento)}</h4><div class="muted" style="font-size:13px">${esc(e.role)} · ${esc(e.phase || 'operação a definir')}${e.local ? ' · ' + esc(e.local) : ''}</div></div></div>`).join('')}</div>` : `<div class="dim" style="font-size:12px;margin-top:10px">${new Set(inM.map(e => e.date)).size} dia(s) de trabalho neste mês. Toque em um dia colorido para detalhes.</div>`}
+  </div>
+  <div class="card">
+    <div class="tabs"><button class="btn ${S.tab === 'next' ? 'on' : ''}" onclick="S.tab='next';render()">Próximos (${future.length})</button><button class="btn ${S.tab === 'past' ? 'on' : ''}" onclick="S.tab='past';render()">Anteriores (${past.length})</button></div>
+    <div class="list">${list.map(rowHtml).join('') || '<div class="empty">Nada aqui.</div>'}</div>
+  </div>
+  ${ag.runs.length ? `<button class="btn pri" style="width:100%;justify-content:center" onclick="baixarIcs()">📅 Adicionar ao meu calendário</button>` : ''}
+  <div class="foot">Esta página se atualiza sozinha. Mudanças na escala aparecem aqui automaticamente.</div>`;
+}
+function mv(n) { const [y, m] = S.month.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); S.month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; S.sel = null; render(); }
+refresh(true);
+setInterval(() => { if (!document.hidden) refresh(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+</script>
+</body>
+</html>
