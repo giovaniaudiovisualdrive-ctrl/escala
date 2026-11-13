@@ -249,9 +249,9 @@ function pontoCardHtml() {
   window.PA = [];
   const act = o => { window.PA.push(o); return `abrirPonto(window.PA[${window.PA.length - 1}])`; };
   p.abertos.forEach(a => rows.push(`<div class="prow"><div class="g"><b>${esc(a.evento)}</b><span class="muted" style="font-size:12px">Entrada ${esc(a.in)} · em andamento</span></div>
-    <button class="btn out" onclick="${act({ acao: 'checkout', sub: a.evento, evento: a.key, id: a.id, exigir: p.cfg.exigirLocal, depois: loadPonto })}">Check-out</button></div>`));
+    <button class="btn out" onclick="${act({ acao: 'checkout', sub: a.evento, evento: a.key, id: a.id, exigir: p.cfg.exigirLocal || !!(p.eventosHoje.find(x => x.key === a.key) || {}).exigir, depois: loadPonto })}">Check-out</button></div>`));
   p.eventosHoje.filter(e => !abertoKeys.includes(e.key)).forEach(e => rows.push(`<div class="prow"><div class="g"><b>${esc(e.evento)}</b><span class="muted" style="font-size:12px">${esc(e.role)}${e.local ? ' · ' + esc(e.local) : ''}</span></div>
-    <button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, exigir: p.cfg.exigirLocal, depois: loadPonto })}">Check-in</button></div>`));
+    <button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, exigir: !!e.exigir, depois: loadPonto })}">Check-in</button></div>`));
   const rec = p.recentes.slice(0, 3).map(r => `<div class="prow"><div class="g"><b>${esc(r.evento)}</b><span class="muted" style="font-size:12px">${esc(r.in)} → ${esc(r.out)}</span></div>
     <div style="text-align:right;font-size:12px"><b>${r.calc ? r.calc.diarias + ' diária' + (r.calc.diarias > 1 ? 's' : '') : ''}</b><span class="muted">${r.calc ? fmtH(r.calc.horas) + (r.calc.extra ? ' · HE ' + fmtH(r.calc.extra) : '') : ''}</span></div></div>`).join('');
   return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}
@@ -276,11 +276,11 @@ async function initEvento() {
     <header><div class="logo">ET</div><div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
     <div class="card"><div style="font-size:14px;margin-bottom:12px">${aberto ? 'Você está com <b>check-in aberto</b> neste evento. Ao sair, faça o check-out.' : 'Registre sua <b>entrada</b> ao chegar e a <b>saída</b> ao terminar.'}</div>
       <div style="display:flex;gap:8px"><button class="btn pri big" id="bIn">✅ Check-in</button><button class="btn out big" id="bOut">🏁 Check-out</button></div>
-      <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.cfg.exigirLocal && d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ''}</div></div>
+      <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}</div></div>
     ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · HE ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
     <div class="foot">Os registros vão direto para a coordenação.</div>`;
-    document.getElementById('bIn').onclick = () => abrirPonto({ acao: 'checkin', sub: ev.nome, pedirNome: true, exigir: d.cfg.exigirLocal, depois: draw });
-    document.getElementById('bOut').onclick = () => abrirPonto({ acao: 'checkout', sub: ev.nome, pedirNome: true, exigir: d.cfg.exigirLocal, id: lsGet('ponto_open_' + EV) || '', depois: draw });
+    document.getElementById('bIn').onclick = () => abrirPonto({ acao: 'checkin', sub: ev.nome, pedirNome: true, exigir: !!d.exigir, depois: draw });
+    document.getElementById('bOut').onclick = () => abrirPonto({ acao: 'checkout', sub: ev.nome, pedirNome: true, exigir: !!d.exigir, id: lsGet('ponto_open_' + EV) || '', depois: draw });
   };
   draw();
   document.getElementById('load').style.display = 'none';
@@ -362,7 +362,9 @@ function admDraw() {
   } else if (AD.tab === 'links') {
     window.AL = D.eventos;
     body = `<div class="card"><div class="muted" style="font-size:13px">Mande o link no grupo do evento. Qualquer pessoa (freelancer ou fixo) faz check-in e check-out com o nome.</div>
-      ${D.eventos.filter(e => e.endIso >= D.hoje).map((e, i0) => { const i = D.eventos.indexOf(e); return `<div class="prow"><div class="g"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.os)}</span></div>
+      ${D.eventos.filter(e => e.endIso >= D.hoje).map((e, i0) => { const i = D.eventos.indexOf(e); return `<div class="prow" style="flex-wrap:wrap"><div class="g"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.os)}</span>
+          <span style="font-size:11px;${e.cfgExigir ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgExigir ? '📍 exige localização' : '📍 localização opcional'}${e.cfgEndereco ? ' · ' + esc(e.cfgEndereco) + ' (' + e.cfgRaio + ' m)' : ''}</span></div>
+        <button class="btn" onclick="admEvLocal(window.AL[${i}])">📍 Local</button>
         <button class="btn" onclick="copiar(window.AL[${i}].link)">Copiar</button>
         <button class="btn pri" onclick="window.open('https://wa.me/?text='+encodeURIComponent('*Check-in / check-out · '+window.AL[${i}].nome+'*\\nFaça seu check-in ao chegar e o check-out ao sair:\\n'+window.AL[${i}].link),'_blank')">WhatsApp</button></div>`; }).join('') || '<div class="muted">Nenhum evento em andamento ou futuro.</div>'}</div>`;
   } else if (AD.tab === 'escala') {
@@ -405,6 +407,23 @@ function admDraw() {
       catch (e) { m.innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
     };
   }
+}
+function admEvLocal(e) {
+  const el = document.getElementById('pm');
+  el.innerHTML = `<div class="box"><h3>📍 Local do check-in</h3><div class="muted" style="font-size:13px">${esc(e.nome)} · ${esc(e.start)} · ${esc(e.local)}</div>
+    <label>Endereço do evento<input id="vEnd" value="${esc(e.cfgEndereco || '')}" placeholder="Rua, número, bairro, cidade"></label>
+    <label>Raio permitido (metros)<input id="vRaio" type="number" value="${e.cfgRaio || 50}"></label>
+    <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vEx" type="checkbox" style="width:auto;margin:0" ${e.cfgExigir ? 'checked' : ''}> Exigir localização neste evento</label>
+    <div class="muted" style="font-size:12px;margin-top:8px">Com a opção marcada, o check-in e o check-out só são aceitos com o GPS da pessoa dentro do raio. Sem endereço próprio, vale o local cadastrado em “Regra e locais”.</div>
+    <div id="vMsg"></div>
+    <div class="acts"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="vGo">Salvar</button></div></div>`;
+  el.style.display = 'grid';
+  document.getElementById('vGo').onclick = async () => {
+    const m = document.getElementById('vMsg'); m.innerHTML = '<div class="muted" style="margin-top:8px">Procurando o endereço no mapa…</div>';
+    try { await admPost({ acao: 'adm_evento_local', key: e.key, endereco: document.getElementById('vEnd').value, raio: document.getElementById('vRaio').value, exigir: document.getElementById('vEx').checked });
+      closeP(); avisar('✅ Local do evento salvo.'); await admCarregar(); admDraw(); }
+    catch (err) { m.innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
+  };
 }
 async function admLocalExcluir(nome) {
   if (!confirm('Remover o local ' + nome + '?')) return;
