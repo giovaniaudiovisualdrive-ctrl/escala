@@ -57,6 +57,7 @@ h1{margin:0;font-size:20px}.sub{color:var(--muted);font-size:12px;display:flex;a
 // Página pública (GitHub Pages). Lê os dados da planilha pelo App da Web, sem usar conta Google.
 const API = 'https://script.google.com/macros/s/AKfycbzC4SQUnbGNWFK7xlj0xUKbmoMuGYWDN-8AExukFuHmepDC1JiEgVLS3FiH1KIrv9to/exec';
 const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const LS_KEY = 'agenda_' + TOKEN;
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const DOW = ['dom','seg','ter','qua','qui','sex','sáb'];
 const PAL = ['#1fbf75','#4c9dff','#f5b83d','#a97cff','#19c2c2','#ff8a5c','#e86bb4','#9bd34a','#5ad1ff','#ffd166','#c49bff','#4fd1a5'];
@@ -90,15 +91,28 @@ function baixarIcs() {
   a.download = 'minha-agenda.ics'; document.body.appendChild(a); a.click(); a.remove();
 }
 async function refresh(first) {
+  // abre na hora com a última agenda guardada no celular; depois atualiza em segundo plano
+  if (first && !S.ag) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+      if (saved && saved.entries) {
+        S.ag = saved; S.sig = JSON.stringify(saved.entries); S.month = tIso().slice(0, 7); S.syncing = true;
+        render(false);
+        document.getElementById('load').style.display = 'none';
+      }
+    } catch (e) { /* sem armazenamento: segue normal */ }
+  }
   try {
     const ag = await fetchAg();
     const sig = JSON.stringify(ag.entries);
     const changed = S.sig && sig !== S.sig;
-    S.ag = ag; S.sig = sig;
+    S.ag = ag; S.sig = sig; S.syncing = false;
+    try { localStorage.setItem(LS_KEY, JSON.stringify(ag)); } catch (e) { /* ignora */ }
     if (!S.month) { const t = tIso(); S.month = t.slice(0, 7); }
     render(changed);
   } catch (e) {
-    document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e && e.message || e)}</div>`;
+    if (S.ag) { S.syncing = false; render(false); }
+    else document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e && e.message || e)}</div>`;
   }
   document.getElementById('load').style.display = 'none';
 }
@@ -122,7 +136,7 @@ function render(changed) {
     <div class="chips">${r.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div></div>`;
   const list = S.tab === 'next' ? future : past;
   document.getElementById('app').innerHTML = `
-  <header><div class="logo">ET</div><div><h1>${esc(ag.nome)}</h1><div class="sub"><i></i>Agenda ao vivo · atualizada às ${new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
+  <header><div class="logo">ET</div><div><h1>${esc(ag.nome)}</h1><div class="sub"><i style="${S.syncing ? 'background:var(--amber)' : ''}"></i>${S.syncing ? 'Atualizando…' : 'Agenda ao vivo · atualizada às ' + new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
   ${next ? `<div class="card next ${changed ? 'flash' : ''}"><div class="l">${next.from <= t ? 'Agora' : 'Próximo trabalho'}</div><h2>${esc(next.evento)}</h2>
     <div class="muted">${f(next.from)} (${dow(next.from)})${next.from !== next.to ? ' até ' + f(next.to) : ''} · ${esc(next.role)}${next.local ? ' · ' + esc(next.local) : ''}</div>
     <div class="chips">${next.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div>` : `<div class="card"><b>Nenhum trabalho futuro marcado.</b></div>`}
