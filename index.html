@@ -48,10 +48,27 @@ h1{margin:0;font-size:20px}.sub{color:var(--muted);font-size:12px;display:flex;a
 .load{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg)}
 .spin{width:30px;height:30px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
 .flash{animation:fl 1.6s}@keyframes fl{0%{background:rgba(31,191,117,.35)}}
+/* ponto */
+.ponto h3{margin:0 0 10px;font-size:15px}
+.prow{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--panel2);margin-top:8px}
+.prow .g{flex:1;min-width:0}.prow b{display:block}
+.btn.big{padding:12px 16px;font-size:15px;flex:1;justify-content:center}
+.btn.out{background:var(--amber);border-color:var(--amber);color:#211500}
+.pm{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;place-items:center;z-index:20;padding:16px}
+.pm .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;width:min(440px,100%);max-height:92vh;overflow:auto}
+.pm h3{margin:0 0 4px}.pm label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-top:12px;text-transform:uppercase;letter-spacing:.4px}
+.pm input,.pm select,.pm textarea{width:100%;margin-top:6px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px;color:var(--text);font:inherit;font-size:16px}
+.pm .acts{display:flex;gap:8px;margin-top:16px}.pm .acts .btn{flex:1;justify-content:center}
+.calc{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.calc div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-size:11px;color:var(--muted)}
+.calc b{display:block;font-size:20px;color:var(--text)}
+.msg-ok{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(31,191,117,.15);color:var(--accent);font-weight:600}
+.msg-err{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(255,91,95,.15);color:var(--red);font-weight:600}
 </style>
 </head>
 <body>
 <div class="load" id="load"><div class="spin"></div></div>
+<div class="pm" id="pm"></div>
 <div class="wrap" id="app"></div>
 <script>
 // Página pública (GitHub Pages). Lê os dados da planilha pelo App da Web, sem usar conta Google.
@@ -137,6 +154,7 @@ function render(changed) {
   const list = S.tab === 'next' ? future : past;
   document.getElementById('app').innerHTML = `
   <header><div class="logo">ET</div><div><h1>${esc(ag.nome)}</h1><div class="sub"><i style="${S.syncing ? 'background:var(--amber)' : ''}"></i>${S.syncing ? 'Atualizando…' : 'Agenda ao vivo · atualizada às ' + new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
+  <div id="ponto">${pontoCardHtml()}</div>
   ${next ? `<div class="card next ${changed ? 'flash' : ''}"><div class="l">${next.from <= t ? 'Agora' : 'Próximo trabalho'}</div><h2>${esc(next.evento)}</h2>
     <div class="muted">${f(next.from)} (${dow(next.from)})${next.from !== next.to ? ' até ' + f(next.to) : ''} · ${esc(next.role)}${next.local ? ' · ' + esc(next.local) : ''}</div>
     <div class="chips">${next.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div>` : `<div class="card"><b>Nenhum trabalho futuro marcado.</b></div>`}
@@ -153,9 +171,117 @@ function render(changed) {
   <div class="foot">Esta página se atualiza sozinha. Mudanças na escala aparecem aqui automaticamente.</div>`;
 }
 function mv(n) { const [y, m] = S.month.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); S.month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; S.sel = null; render(); }
-refresh(true);
-setInterval(() => { if (!document.hidden) refresh(); }, 60000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+/* ==================== PONTO (check-in / check-out) ==================== */
+const EV = new URLSearchParams(location.search).get('e') || '';
+const ALIM = ['Local forneceu', 'Pago pelo coordenador', 'Pago por mim', 'Não teve'];
+async function apiGet(params) {
+  const r = await fetch(API + '?' + new URLSearchParams(Object.assign({}, params, { _: Date.now() })), { credentials: 'omit', cache: 'no-store' });
+  const d = await r.json(); if (d.erro) throw new Error(d.erro); return d;
+}
+async function apiPost(body) {
+  const r = await fetch(API, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+  const d = await r.json(); if (d.erro) throw new Error(d.erro); return d;
+}
+const nowLocal = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+const fmtH = h => { const m = Math.round((+h || 0) * 60); return Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
+const calcHtml = c => c ? `<div class="calc"><div><b>${fmtH(c.horas)}</b>trabalhadas</div><div><b>${c.diarias}</b>diária${c.diarias > 1 ? 's' : ''}</div><div><b>${fmtH(c.extra)}</b>hora extra</div></div>` : '';
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
+function closeP() { document.getElementById('pm').style.display = 'none'; }
+
+/** Abre o formulário de check-in ou check-out. o = { acao, sub, evento, role, pedirNome, id, depois } */
+function abrirPonto(o) {
+  const opt = () => '<option value="">Selecione…</option>' + ALIM.map(a => `<option>${esc(a)}</option>`).join('');
+  const el = document.getElementById('pm');
+  el.innerHTML = `<div class="box"><h3>${o.acao === 'checkin' ? '✅ Check-in (entrada)' : '🏁 Check-out (saída)'}</h3><div class="muted" style="font-size:13px">${esc(o.sub || '')}</div>
+    ${o.pedirNome ? `<label>Seu nome completo<input id="pNome" value="${esc(lsGet('ponto_nome') || '')}" autocomplete="name" placeholder="Ex.: JOÃO DA SILVA"></label>` : ''}
+    <label>Horário<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>
+    ${o.acao === 'checkout' ? `<label>Almoço<select id="pAlm">${opt()}</select></label><label>Janta<select id="pJan">${opt()}</select></label>` : ''}
+    <label>Observações<textarea id="pObs" rows="2" placeholder="Opcional"></textarea></label>
+    <div id="pMsg"></div>
+    <div class="acts" id="pActs"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="pGo">Confirmar</button></div></div>`;
+  el.style.display = 'grid';
+  document.getElementById('pGo').onclick = async () => {
+    const msg = document.getElementById('pMsg'), go = document.getElementById('pGo');
+    const body = { acao: o.acao, evento: o.evento, role: o.role || '', id: o.id || '', hora: document.getElementById('pHora').value, obs: document.getElementById('pObs').value };
+    if (EV) body.e = EV; else body.t = TOKEN;
+    if (o.pedirNome) { body.nome = document.getElementById('pNome').value.trim(); if (body.nome.length < 3) { msg.innerHTML = '<div class="msg-err">Digite seu nome completo.</div>'; return; } lsSet('ponto_nome', body.nome); }
+    if (o.acao === 'checkout') {
+      body.almoco = document.getElementById('pAlm').value; body.janta = document.getElementById('pJan').value;
+      if (!body.almoco || !body.janta) { msg.innerHTML = '<div class="msg-err">Informe como foi o almoço e a janta.</div>'; return; }
+    }
+    go.disabled = true; go.textContent = 'Enviando…';
+    try {
+      const r = await apiPost(body);
+      const key = 'ponto_open_' + (EV || o.evento);
+      if (o.acao === 'checkin') lsSet(key, r.id); else lsSet(key, null);
+      if (o.acao === 'checkout' && r.calc) {
+        const hist = JSON.parse(lsGet('ponto_hist') || '[]'); hist.unshift({ ev: o.sub, in: r.in, out: r.out, calc: r.calc }); lsSet('ponto_hist', JSON.stringify(hist.slice(0, 10)));
+      }
+      msg.innerHTML = `<div class="msg-ok">${esc(r.msg)}</div>${calcHtml(r.calc)}`;
+      document.getElementById('pActs').innerHTML = '<button class="btn pri" onclick="closeP()">OK</button>';
+      if (o.depois) o.depois();
+    } catch (e) {
+      msg.innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; go.disabled = false; go.textContent = 'Confirmar';
+    }
+  };
+}
+
+/* ----- ponto dentro da agenda individual ----- */
+function pontoCardHtml() {
+  const p = S.ponto;
+  if (!p) return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3><div class="muted" style="font-size:13px">Carregando…</div></div>`;
+  if (p.erro) return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3><div class="muted" style="font-size:13px">⚠ ${esc(p.erro)}</div></div>`;
+  const abertoKeys = p.abertos.map(a => a.key);
+  const rows = [];
+  window.PA = [];
+  const act = o => { window.PA.push(o); return `abrirPonto(window.PA[${window.PA.length - 1}])`; };
+  p.abertos.forEach(a => rows.push(`<div class="prow"><div class="g"><b>${esc(a.evento)}</b><span class="muted" style="font-size:12px">Entrada ${esc(a.in)} · em andamento</span></div>
+    <button class="btn out" onclick="${act({ acao: 'checkout', sub: a.evento, evento: a.key, id: a.id, depois: loadPonto })}">Check-out</button></div>`));
+  p.eventosHoje.filter(e => !abertoKeys.includes(e.key)).forEach(e => rows.push(`<div class="prow"><div class="g"><b>${esc(e.evento)}</b><span class="muted" style="font-size:12px">${esc(e.role)}${e.local ? ' · ' + esc(e.local) : ''}</span></div>
+    <button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, depois: loadPonto })}">Check-in</button></div>`));
+  const rec = p.recentes.slice(0, 3).map(r => `<div class="prow"><div class="g"><b>${esc(r.evento)}</b><span class="muted" style="font-size:12px">${esc(r.in)} → ${esc(r.out)}</span></div>
+    <div style="text-align:right;font-size:12px"><b>${r.calc ? r.calc.diarias + ' diária' + (r.calc.diarias > 1 ? 's' : '') : ''}</b><span class="muted">${r.calc ? fmtH(r.calc.horas) + (r.calc.extra ? ' · HE ' + fmtH(r.calc.extra) : '') : ''}</span></div></div>`).join('');
+  return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}
+    ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}</div>`;
+}
+async function loadPonto() {
+  try { S.ponto = await apiGet({ f: 'ponto', t: TOKEN }); } catch (e) { S.ponto = { erro: e.message || String(e) }; }
+  const el = document.getElementById('ponto'); if (el) el.innerHTML = pontoCardHtml();
+}
+
+/* ----- página do link do evento (freelancers) ----- */
+async function initEvento() {
+  const app = document.getElementById('app');
+  let d;
+  try { d = await apiGet({ f: 'ponto', e: EV }); }
+  catch (e) { app.innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; document.getElementById('load').style.display = 'none'; return; }
+  const ev = d.evento; document.title = 'Check-in · ' + ev.nome;
+  const per = ev.start + (ev.end && ev.end !== ev.start ? ' a ' + ev.end : '');
+  const draw = () => {
+    const aberto = lsGet('ponto_open_' + EV), hist = JSON.parse(lsGet('ponto_hist') || '[]').filter(h => h.ev === ev.nome);
+    app.innerHTML = `
+    <header><div class="logo">ET</div><div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
+    <div class="card"><div style="font-size:14px;margin-bottom:12px">${aberto ? 'Você está com <b>check-in aberto</b> neste evento. Ao sair, faça o check-out.' : 'Registre sua <b>entrada</b> ao chegar e a <b>saída</b> ao terminar.'}</div>
+      <div style="display:flex;gap:8px"><button class="btn pri big" id="bIn">✅ Check-in</button><button class="btn out big" id="bOut">🏁 Check-out</button></div>
+      <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.</div></div>
+    ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · HE ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
+    <div class="foot">Os registros vão direto para a coordenação.</div>`;
+    document.getElementById('bIn').onclick = () => abrirPonto({ acao: 'checkin', sub: ev.nome, pedirNome: true, depois: draw });
+    document.getElementById('bOut').onclick = () => abrirPonto({ acao: 'checkout', sub: ev.nome, pedirNome: true, id: lsGet('ponto_open_' + EV) || '', depois: draw });
+  };
+  draw();
+  document.getElementById('load').style.display = 'none';
+}
+
+if (EV) {
+  initEvento();
+} else {
+  refresh(true);
+  loadPonto();
+  setInterval(() => { if (!document.hidden) refresh(); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); loadPonto(); } });
+}
 </script>
 </body>
 </html>
