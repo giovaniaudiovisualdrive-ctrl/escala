@@ -188,6 +188,14 @@ const calcHtml = c => c ? `<div class="calc"><div><b>${fmtH(c.horas)}</b>trabalh
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
 function closeP() { document.getElementById('pm').style.display = 'none'; }
+function pegarLocal() {
+  return new Promise(res => {
+    if (!navigator.geolocation) return res(null);
+    navigator.geolocation.getCurrentPosition(
+      p => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
+      () => res(null), { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+  });
+}
 
 /** Abre o formulário de check-in ou check-out. o = { acao, sub, evento, role, pedirNome, id, depois } */
 function abrirPonto(o) {
@@ -198,6 +206,7 @@ function abrirPonto(o) {
     <label>Horário<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>
     ${o.acao === 'checkout' ? `<label>Almoço<select id="pAlm">${opt()}</select></label><label>Janta<select id="pJan">${opt()}</select></label>` : ''}
     <label>Observações<textarea id="pObs" rows="2" placeholder="Opcional"></textarea></label>
+    <div class="muted" style="font-size:12px;margin-top:10px">📍 Sua localização atual será enviada junto${o.exigir ? ' <b>(obrigatória neste evento)</b>' : ''}. Permita o acesso quando o celular pedir.</div>
     <div id="pMsg"></div>
     <div class="acts" id="pActs"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="pGo">Confirmar</button></div></div>`;
   el.style.display = 'grid';
@@ -210,7 +219,10 @@ function abrirPonto(o) {
       body.almoco = document.getElementById('pAlm').value; body.janta = document.getElementById('pJan').value;
       if (!body.almoco || !body.janta) { msg.innerHTML = '<div class="msg-err">Informe como foi o almoço e a janta.</div>'; return; }
     }
-    go.disabled = true; go.textContent = 'Enviando…';
+    go.disabled = true; go.textContent = '📍 Pegando localização…';
+    body.loc = await pegarLocal();
+    if (!body.loc && o.exigir) { msg.innerHTML = '<div class="msg-err">Não consegui sua localização. Ative o GPS/localização do celular, permita o acesso para este site e tente de novo.</div>'; go.disabled = false; go.textContent = 'Confirmar'; return; }
+    go.textContent = 'Enviando…';
     try {
       const r = await apiPost(body);
       const key = 'ponto_open_' + (EV || o.evento);
@@ -237,9 +249,9 @@ function pontoCardHtml() {
   window.PA = [];
   const act = o => { window.PA.push(o); return `abrirPonto(window.PA[${window.PA.length - 1}])`; };
   p.abertos.forEach(a => rows.push(`<div class="prow"><div class="g"><b>${esc(a.evento)}</b><span class="muted" style="font-size:12px">Entrada ${esc(a.in)} · em andamento</span></div>
-    <button class="btn out" onclick="${act({ acao: 'checkout', sub: a.evento, evento: a.key, id: a.id, depois: loadPonto })}">Check-out</button></div>`));
+    <button class="btn out" onclick="${act({ acao: 'checkout', sub: a.evento, evento: a.key, id: a.id, exigir: p.cfg.exigirLocal, depois: loadPonto })}">Check-out</button></div>`));
   p.eventosHoje.filter(e => !abertoKeys.includes(e.key)).forEach(e => rows.push(`<div class="prow"><div class="g"><b>${esc(e.evento)}</b><span class="muted" style="font-size:12px">${esc(e.role)}${e.local ? ' · ' + esc(e.local) : ''}</span></div>
-    <button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, depois: loadPonto })}">Check-in</button></div>`));
+    <button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, exigir: p.cfg.exigirLocal, depois: loadPonto })}">Check-in</button></div>`));
   const rec = p.recentes.slice(0, 3).map(r => `<div class="prow"><div class="g"><b>${esc(r.evento)}</b><span class="muted" style="font-size:12px">${esc(r.in)} → ${esc(r.out)}</span></div>
     <div style="text-align:right;font-size:12px"><b>${r.calc ? r.calc.diarias + ' diária' + (r.calc.diarias > 1 ? 's' : '') : ''}</b><span class="muted">${r.calc ? fmtH(r.calc.horas) + (r.calc.extra ? ' · HE ' + fmtH(r.calc.extra) : '') : ''}</span></div></div>`).join('');
   return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}
@@ -264,17 +276,150 @@ async function initEvento() {
     <header><div class="logo">ET</div><div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
     <div class="card"><div style="font-size:14px;margin-bottom:12px">${aberto ? 'Você está com <b>check-in aberto</b> neste evento. Ao sair, faça o check-out.' : 'Registre sua <b>entrada</b> ao chegar e a <b>saída</b> ao terminar.'}</div>
       <div style="display:flex;gap:8px"><button class="btn pri big" id="bIn">✅ Check-in</button><button class="btn out big" id="bOut">🏁 Check-out</button></div>
-      <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.</div></div>
+      <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.cfg.exigirLocal && d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ''}</div></div>
     ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · HE ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
     <div class="foot">Os registros vão direto para a coordenação.</div>`;
-    document.getElementById('bIn').onclick = () => abrirPonto({ acao: 'checkin', sub: ev.nome, pedirNome: true, depois: draw });
-    document.getElementById('bOut').onclick = () => abrirPonto({ acao: 'checkout', sub: ev.nome, pedirNome: true, id: lsGet('ponto_open_' + EV) || '', depois: draw });
+    document.getElementById('bIn').onclick = () => abrirPonto({ acao: 'checkin', sub: ev.nome, pedirNome: true, exigir: d.cfg.exigirLocal, depois: draw });
+    document.getElementById('bOut').onclick = () => abrirPonto({ acao: 'checkout', sub: ev.nome, pedirNome: true, exigir: d.cfg.exigirLocal, id: lsGet('ponto_open_' + EV) || '', depois: draw });
   };
   draw();
   document.getElementById('load').style.display = 'none';
 }
 
-if (EV) {
+/* ----- administração do ponto (?a=) ----- */
+const ADM = new URLSearchParams(location.search).get('a') || '';
+const AD = { tab: 'reg', ev: '', q: '', d: null };
+function copiar(t) {
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(() => avisar('📋 Copiado.'), () => prompt('Copie:', t));
+  else prompt('Copie:', t);
+}
+function avisar(m) { const t = document.createElement('div'); t.className = 'msg-ok'; t.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:40'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 2500); }
+const mapa = s => { const m = String(s || '').match(/(-?\d+\.\d+),(-?\d+\.\d+)/); return m ? `<a href="https://www.google.com/maps?q=${m[1]},${m[2]}" target="_blank" style="text-decoration:none" title="${esc(s)}">📍</a>` : ''; };
+async function admCarregar() { AD.d = await apiGet({ f: 'adm', a: ADM }); }
+async function admPost(body) { return apiPost(Object.assign({ a: ADM }, body)); }
+function admRegs() {
+  const f = norm(AD.q);
+  return AD.d.registros.filter(r => (!AD.ev || r.key === AD.ev) && (!f || norm([r.nome, r.evento, r.os].join(' ')).includes(f)));
+}
+function admCsv() {
+  const q = v => { const s = String(v == null ? '' : v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const L = [['DATA', 'NOME', 'EVENTO', 'OS', 'FUNÇÃO', 'ENTRADA', 'SAÍDA', 'HORAS', 'DIÁRIAS', 'HORA EXTRA', 'ALMOÇO', 'JANTA', 'OBSERVAÇÕES', 'ORIGEM', 'LOCALIZAÇÃO ENTRADA', 'LOCALIZAÇÃO SAÍDA', 'DISTÂNCIA (m)'].join(';')];
+  admRegs().forEach(r => L.push([r.data, r.nome, r.evento, r.os, r.role, r.in, r.out, r.calc ? fmtH(r.calc.horas) : '', r.calc ? r.calc.diarias : '', r.calc ? fmtH(r.calc.extra) : '', r.almoco, r.janta, r.obs, r.origem, r.locIn, r.locOut, r.dist].map(q).join(';')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\r\n')], { type: 'text/csv' }));
+  const ev = AD.d.eventos.find(e => e.key === AD.ev);
+  a.download = 'ponto' + (ev ? '-' + norm(ev.nome).replace(/[^A-Z0-9]+/g, '-').toLowerCase() : '') + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function admEditar(r) {
+  const D = AD.d, novo = !r; r = r || {};
+  const opt = v => '<option value="">—</option>' + D.alimentacao.map(a => `<option ${a === v ? 'selected' : ''}>${esc(a)}</option>`).join('');
+  const el = document.getElementById('pm');
+  el.innerHTML = `<div class="box"><h3>${novo ? '➕ Lançar registro' : '✎ Editar registro'}</h3>
+    ${novo ? `<label>Evento<select id="aEv">${D.eventos.map(e => `<option value="${esc(e.key)}" ${e.key === AD.ev ? 'selected' : ''}>${esc(e.nome)} · ${esc(e.start)}</option>`).join('')}</select></label>` : `<div class="muted" style="font-size:13px">${esc(r.evento)}</div>`}
+    <label>Nome<input id="aNome" value="${esc(r.nome || '')}"></label>
+    <label>Entrada<input id="aIn" type="datetime-local" value="${esc(r.inIso || '')}"></label>
+    <label>Saída<input id="aOut" type="datetime-local" value="${esc(r.outIso || '')}"></label>
+    <label>Almoço<select id="aAlm">${opt(r.almoco)}</select></label>
+    <label>Janta<select id="aJan">${opt(r.janta)}</select></label>
+    <label>Observações<textarea id="aObs" rows="2">${esc(r.obs || '')}</textarea></label>
+    <div id="aMsg"></div>
+    <div class="acts"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="aGo">Salvar</button></div></div>`;
+  el.style.display = 'grid';
+  document.getElementById('aGo').onclick = async () => {
+    const v = id => document.getElementById(id).value;
+    const body = { acao: novo ? 'adm_novo' : 'adm_editar', id: r.id, evento: novo ? v('aEv') : r.key, nome: v('aNome'), inIso: v('aIn'), outIso: v('aOut'), almoco: v('aAlm'), janta: v('aJan'), obs: v('aObs') };
+    try { const res = await admPost(body); closeP(); avisar('✅ ' + res.msg); await admCarregar(); admDraw(); }
+    catch (e) { document.getElementById('aMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+  };
+}
+async function admExcluir(r) {
+  if (!confirm(`Excluir o registro de ${r.nome} (${r.evento}, ${r.in})? Não dá para desfazer.`)) return;
+  try { await admPost({ acao: 'adm_excluir', id: r.id }); avisar('Registro excluído.'); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+}
+function admDraw() {
+  const D = AD.d, app = document.getElementById('app');
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['escala', 'Escala'], ['regra', 'Regra e locais']];
+  let body = '';
+  if (AD.tab === 'reg') {
+    const regs = admRegs(); window.AR = regs;
+    const tot = {}; regs.forEach(r => { const t = tot[r.nome] = tot[r.nome] || { n: r.nome, d: 0, h: 0, e: 0, ab: 0 }; if (r.calc) { t.d += r.calc.diarias; t.h += r.calc.horas; t.e += r.calc.extra; } else t.ab++; });
+    const evs = D.eventos.filter(e => D.registros.some(r => r.key === e.key) || e.key === AD.ev);
+    body = `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="fEv" style="flex:1;min-width:200px"><option value="">Todos os eventos</option>${evs.map(e => `<option value="${esc(e.key)}" ${e.key === AD.ev ? 'selected' : ''}>${esc(e.nome)} · ${esc(e.start)}</option>`).join('')}</select>
+        <input id="fQ" placeholder="Buscar nome…" value="${esc(AD.q)}" style="flex:1;min-width:160px">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn pri" onclick="admEditar()">➕ Lançar registro</button><button class="btn" onclick="admCsv()">⬇ Baixar planilha (filtro atual)</button><button class="btn" onclick="admCarregar().then(admDraw)">↻ Atualizar</button></div></div>
+      <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Totais ${AD.ev ? 'do evento' : ''} · ${regs.length} registro(s)</h3>
+        ${Object.values(tot).sort((a, b) => a.n.localeCompare(b.n)).map(t => `<div class="prow"><div class="g"><b>${esc(t.n)}</b>${t.ab ? `<span style="color:var(--amber);font-size:12px">${t.ab} em aberto</span>` : ''}</div><div style="text-align:right;font-size:12px"><b>${t.d} diária${t.d !== 1 ? 's' : ''}</b><span class="muted">${fmtH(t.h)} · HE ${fmtH(t.e)}</span></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>
+      <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Registros</h3>
+        ${regs.map((r, i) => `<div class="prow" style="align-items:flex-start"><div class="g"><b>${esc(r.nome)}</b><span class="muted" style="font-size:12px">${esc(r.evento)} · ${esc(r.origem || '')}</span>
+          <div style="font-size:13px;margin-top:4px">${esc(r.in)} ${mapa(r.locIn)} → ${r.out ? esc(r.out) + ' ' + mapa(r.locOut) : '<b style="color:var(--amber)">sem saída</b>'}${r.dist !== '' && r.dist != null ? ` <span class="muted">(${r.dist} m do local)</span>` : ''}</div>
+          ${r.calc ? `<div style="font-size:12px;margin-top:2px"><b>${r.calc.diarias} diária${r.calc.diarias > 1 ? 's' : ''}</b> · ${fmtH(r.calc.horas)} · HE ${fmtH(r.calc.extra)}</div>` : ''}
+          ${r.almoco || r.janta ? `<div class="muted" style="font-size:12px">Almoço: ${esc(r.almoco || '—')} · Janta: ${esc(r.janta || '—')}</div>` : ''}
+          ${r.obs ? `<div class="muted" style="font-size:12px">${esc(r.obs)}</div>` : ''}${r.editado ? `<div class="muted" style="font-size:11px">✎ ${esc(r.editado)}</div>` : ''}</div>
+          <div style="display:flex;flex-direction:column;gap:6px"><button class="btn" onclick="admEditar(window.AR[${i}])">✎</button><button class="btn" onclick="admExcluir(window.AR[${i}])">🗑</button></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>`;
+  } else if (AD.tab === 'links') {
+    window.AL = D.eventos;
+    body = `<div class="card"><div class="muted" style="font-size:13px">Mande o link no grupo do evento. Qualquer pessoa (freelancer ou fixo) faz check-in e check-out com o nome.</div>
+      ${D.eventos.filter(e => e.endIso >= D.hoje).map((e, i0) => { const i = D.eventos.indexOf(e); return `<div class="prow"><div class="g"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.os)}</span></div>
+        <button class="btn" onclick="copiar(window.AL[${i}].link)">Copiar</button>
+        <button class="btn pri" onclick="window.open('https://wa.me/?text='+encodeURIComponent('*Check-in / check-out · '+window.AL[${i}].nome+'*\\nFaça seu check-in ao chegar e o check-out ao sair:\\n'+window.AL[${i}].link),'_blank')">WhatsApp</button></div>`; }).join('') || '<div class="muted">Nenhum evento em andamento ou futuro.</div>'}</div>`;
+  } else if (AD.tab === 'escala') {
+    body = D.eventos.map(e => `<div class="card"><b>${esc(e.nome)}</b> <span class="muted" style="font-size:12px">${esc(e.os)}</span>
+      <div class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.status || '')}</div>
+      <div class="chips">${(e.pessoas || []).map(p => `<span class="chip">${esc(p)}</span>`).join('') || '<span class="muted" style="font-size:12px">Sem equipe na escala.</span>'}</div></div>`).join('') || '<div class="card muted">Nenhum evento.</div>';
+  } else {
+    const c = D.cfg; window.ALC = D.locais;
+    const nomesLocais = [...new Set(D.eventos.map(e => e.local).filter(Boolean))].sort();
+    body = `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Regra da diária</h3>
+      <div class="muted" style="font-size:12px">Horas corridas, sem desconto de almoço. Até a diária = 1 diária; passou = hora extra; se a hora extra passar do limite, vira outra diária (dobra).</div>
+      <div class="pm" style="position:static;display:block;background:none;padding:0"><label>Horas de uma diária<input id="rB" type="number" step="0.5" value="${c.base}"></label>
+      <label>Hora extra máxima antes da dobra (horas, ex.: 5.5 = 5h30)<input id="rL" type="number" step="0.25" value="${c.limite}"></label>
+      <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="rX" type="checkbox" style="width:auto;margin:0" ${c.exigirLocal ? 'checked' : ''}> Exigir localização no check-in (dentro do raio do local, quando ele estiver cadastrado)</label></div>
+      <button class="btn pri" style="margin-top:12px" id="rGo">Salvar regra</button></div>
+      <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Locais (endereço e raio)</h3>
+      <div class="muted" style="font-size:12px">O nome precisa ser igual ao LOCAL que aparece no evento (ex.: BTT). O endereço vira coordenada sozinho.</div>
+      ${D.locais.map((l, i) => `<div class="prow"><div class="g"><b>${esc(l.nome)}</b><span class="muted" style="font-size:12px">${esc(l.endereco)} · raio ${l.raio} m ${l.lat ? mapa(l.lat + ',' + l.lng) : ''}</span></div><button class="btn" onclick="admLocalExcluir(window.ALC[${i}].nome)">🗑</button></div>`).join('') || '<div class="muted" style="font-size:13px;margin-top:8px">Nenhum local cadastrado.</div>'}
+      <div class="pm" style="position:static;display:block;background:none;padding:0">
+        <label>Local<input id="lN" list="lNs" placeholder="Ex.: BTT"><datalist id="lNs">${nomesLocais.map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
+        <label>Endereço completo<input id="lE" placeholder="Ex.: Rua Cecília Lottenberg, 50 - Santo Amaro, São Paulo"></label>
+        <label>Raio permitido (metros)<input id="lR" type="number" value="50"></label></div>
+      <div id="lMsg"></div><button class="btn pri" style="margin-top:12px" id="lGo">Salvar local</button></div>`;
+  }
+  app.style.maxWidth = '980px';
+  app.innerHTML = `<header><div class="logo">ET</div><div><h1>Administração do ponto</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
+    <div class="tabs" style="flex-wrap:wrap">${tabs.map(([k, l]) => `<button class="btn ${AD.tab === k ? 'on' : ''}" onclick="AD.tab='${k}';admDraw()">${l}</button>`).join('')}</div>${body}
+    <div class="foot">Acesso só ao ponto. Para mudar a escala, fale com a coordenação.</div>`;
+  if (AD.tab === 'reg') {
+    document.getElementById('fEv').onchange = e => { AD.ev = e.target.value; admDraw(); };
+    const fq = document.getElementById('fQ'); fq.oninput = () => { AD.q = fq.value; const p = fq.selectionStart; admDraw(); const n = document.getElementById('fQ'); n.focus(); n.setSelectionRange(p, p); };
+  }
+  if (AD.tab === 'regra') {
+    document.getElementById('rGo').onclick = async () => {
+      try { await admPost({ acao: 'adm_regra', base: document.getElementById('rB').value, limite: document.getElementById('rL').value, exigir: document.getElementById('rX').checked }); avisar('✅ Regra salva.'); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+    };
+    document.getElementById('lGo').onclick = async () => {
+      const m = document.getElementById('lMsg'); m.innerHTML = '<div class="muted" style="margin-top:8px">Procurando o endereço no mapa…</div>';
+      try { await admPost({ acao: 'adm_local', nome: document.getElementById('lN').value, endereco: document.getElementById('lE').value, raio: document.getElementById('lR').value }); avisar('✅ Local salvo.'); await admCarregar(); admDraw(); }
+      catch (e) { m.innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+    };
+  }
+}
+async function admLocalExcluir(nome) {
+  if (!confirm('Remover o local ' + nome + '?')) return;
+  try { await admPost({ acao: 'adm_local_excluir', nome }); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+}
+async function initAdm() {
+  document.title = 'Administração do ponto';
+  try { await admCarregar(); admDraw(); }
+  catch (e) { document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; }
+  document.getElementById('load').style.display = 'none';
+}
+
+if (ADM) {
+  initAdm();
+} else if (EV) {
   initEvento();
 } else {
   refresh(true);
