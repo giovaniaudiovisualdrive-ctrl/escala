@@ -7,16 +7,16 @@
 <title>Minha agenda</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0d1117;--panel:#151b23;--panel2:#1b232d;--line:#263241;--text:#e6edf3;--muted:#8b98a9;--dim:#5d6b7d;--accent:#1fbf75;--amber:#f5b83d;--red:#ff5b5f}
+:root{--bg:#0b0b0c;--panel:#151517;--panel2:#1d1d20;--line:#2a2a2f;--text:#f2f2f3;--muted:#9a9aa3;--dim:#66666e;--accent:#c8161d;--brand:#9e0f1c;--ok:#1fbf75;--amber:#f5b83d;--red:#ff5b5f;--tema:#c8161d}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 Inter,system-ui,sans-serif}
 .wrap{max-width:760px;margin:0 auto;padding:20px 16px 48px}
 header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
-.logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#0b7a4a);display:grid;place-items:center;font-weight:800;color:#04150d;flex:none}
+.logo{width:42px;height:42px;border-radius:10px;background:var(--brand);display:grid;place-items:center;font-weight:800;color:#fff;flex:none;overflow:hidden;font-family:Arial,sans-serif;font-size:21px;letter-spacing:-1px}.logo img{width:100%;height:100%;object-fit:contain;background:#000}.logo img~span{display:none}
 h1{margin:0;font-size:20px}.sub{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
-.sub i{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block}
+.sub i{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
-.next{border-color:rgba(31,191,117,.5);background:linear-gradient(180deg,rgba(31,191,117,.12),var(--panel))}
+.next{border-color:rgba(200,22,29,.55);background:linear-gradient(180deg,rgba(200,22,29,.16),var(--panel))}
 .next .l{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--accent);text-transform:uppercase}
 .next h2{margin:6px 0 4px;font-size:22px}
 .muted{color:var(--muted)}.dim{color:var(--dim)}
@@ -25,7 +25,7 @@ h1{margin:0;font-size:20px}.sub{color:var(--muted);font-size:12px;display:flex;a
 .calhd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .calhd b{font-size:17px}
 .btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:#04150d}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .wd{text-align:center;font-size:11px;color:var(--muted);font-weight:700;padding:4px 0}
 .cd{aspect-ratio:1/1;border-radius:9px;background:var(--panel2);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700;font-size:14px;cursor:default;position:relative;color:var(--muted)}
@@ -62,13 +62,38 @@ h1{margin:0;font-size:20px}.sub{color:var(--muted);font-size:12px;display:flex;a
 .calc{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
 .calc div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-size:11px;color:var(--muted)}
 .calc b{display:block;font-size:20px;color:var(--text)}
-.msg-ok{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(31,191,117,.15);color:var(--accent);font-weight:600}
+.msg-ok{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(31,191,117,.15);color:var(--ok);font-weight:600}
+/* ---------- tema do mês ---------- */
+.tema-faixa{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;margin-bottom:14px;font-size:13px;font-weight:600;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--tema) 28%,transparent),transparent);border:1px solid color-mix(in srgb,var(--tema) 45%,transparent)}
+.tema-faixa .ico{font-size:22px;line-height:1}
+.tema-bg{position:fixed;inset:0;pointer-events:none;z-index:-1;overflow:hidden;
+  background:radial-gradient(circle at 85% -10%,color-mix(in srgb,var(--tema) 26%,transparent),transparent 55%),radial-gradient(circle at -10% 110%,rgba(200,22,29,.14),transparent 50%)}
+.tema-bg span{position:absolute;top:-10vh;opacity:.13;animation:cair linear infinite;user-select:none}
+@keyframes cair{to{transform:translateY(125vh) rotate(260deg)}}
+@media (prefers-reduced-motion:reduce){.tema-bg span{animation:none;top:auto}}
+body{background:var(--bg)}
+/* ---------- chat ---------- */
+.chat-fab{position:fixed;right:16px;bottom:18px;z-index:15;background:var(--accent);color:#fff;border:0;border-radius:30px;padding:13px 18px;font:inherit;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.5);cursor:pointer;display:flex;gap:8px;align-items:center}
+.chat-fab .n{background:#fff;color:var(--accent);border-radius:10px;padding:0 6px;font-size:12px}
+.chat-box{position:fixed;inset:auto 12px 12px 12px;max-width:440px;margin-left:auto;height:min(78vh,620px);z-index:25;background:var(--panel);border:1px solid var(--line);border-radius:16px;display:none;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.6)}
+.chat-box.on{display:flex}
+.chat-hd{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.chat-msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.bolha{max-width:82%;padding:8px 11px;border-radius:12px;border:1px solid var(--line);white-space:pre-wrap;font-size:14px}
+.bolha.eu{align-self:flex-end;background:rgba(200,22,29,.18)}.bolha.adm{align-self:flex-start;background:var(--panel2)}
+.bolha small{display:block;color:var(--dim);font-size:10px;margin-top:3px}
+.chat-ft{padding:10px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.chat-ft textarea,.chat-ft input{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--text);font:inherit;font-size:16px}
+.atalhos{display:flex;gap:6px;flex-wrap:wrap}.atalhos button{font-size:12px;padding:5px 9px}
 .msg-err{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(255,91,95,.15);color:var(--red);font-weight:600}
 </style>
 </head>
 <body>
 <div class="load" id="load"><div class="spin"></div></div>
 <div class="pm" id="pm"></div>
+<div class="tema-bg" id="temaBg"></div>
+<div id="chatRoot"></div>
 <div class="wrap" id="app"></div>
 <script>
 // Página pública (GitHub Pages). Lê os dados da planilha pelo App da Web, sem usar conta Google.
@@ -153,13 +178,14 @@ function render(changed) {
     <div class="chips">${r.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div></div>`;
   const list = S.tab === 'next' ? future : past;
   document.getElementById('app').innerHTML = `
-  <header><div class="logo">ET</div><div><h1>${esc(ag.nome)}</h1><div class="sub"><i style="${S.syncing ? 'background:var(--amber)' : ''}"></i>${S.syncing ? 'Atualizando…' : 'Agenda ao vivo · atualizada às ' + new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
+  <header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>${esc(ag.nome)}</h1><div class="sub"><i style="${S.syncing ? 'background:var(--amber)' : ''}"></i>${S.syncing ? 'Atualizando…' : 'Agenda ao vivo · atualizada às ' + new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
+  ${faixaTema()}
   <div id="ponto">${pontoCardHtml()}</div>
   ${next ? `<div class="card next ${changed ? 'flash' : ''}"><div class="l">${next.from <= t ? 'Agora' : 'Próximo trabalho'}</div><h2>${esc(next.evento)}</h2>
     <div class="muted">${f(next.from)} (${dow(next.from)})${next.from !== next.to ? ' até ' + f(next.to) : ''} · ${esc(next.role)}${next.local ? ' · ' + esc(next.local) : ''}</div>
     <div class="chips">${next.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div>` : `<div class="card"><b>Nenhum trabalho futuro marcado.</b></div>`}
   <div class="card ${changed ? 'flash' : ''}">
-    <div class="calhd"><button class="btn" onclick="mv(-1)">‹</button><b>${MESES[m - 1]} ${y}</b><button class="btn" onclick="mv(1)">›</button></div>
+    <div class="calhd"><button class="btn" onclick="mv(-1)">‹</button><b>${icoMes(y, m)} ${MESES[m - 1]} ${y}</b><button class="btn" onclick="mv(1)">›</button></div>
     <div class="cal">${cal}</div>
     ${S.sel ? `<div class="list" style="margin-top:12px">${selList.map(e => `<div class="row"><div class="bar" style="background:${col(e.evento)}"></div><div><h4>${f(e.date)} · ${esc(e.evento)}</h4><div class="muted" style="font-size:13px">${esc(e.role)} · ${esc(e.phase || 'operação a definir')}${e.local ? ' · ' + esc(e.local) : ''}</div></div></div>`).join('')}</div>` : `<div class="dim" style="font-size:12px;margin-top:10px">${new Set(inM.map(e => e.date)).size} dia(s) de trabalho neste mês. Toque em um dia colorido para detalhes.</div>`}
   </div>
@@ -273,7 +299,8 @@ async function initEvento() {
   const draw = () => {
     const aberto = lsGet('ponto_open_' + EV), hist = JSON.parse(lsGet('ponto_hist') || '[]').filter(h => h.ev === ev.nome);
     app.innerHTML = `
-    <header><div class="logo">ET</div><div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
+    <header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
+    ${faixaTema()}
     <div class="card"><div style="font-size:14px;margin-bottom:12px">${aberto ? 'Você está com <b>check-in aberto</b> neste evento. Ao sair, faça o check-out.' : 'Registre sua <b>entrada</b> ao chegar e a <b>saída</b> ao terminar.'}</div>
       <div style="display:flex;gap:8px"><button class="btn pri big" id="bIn">✅ Check-in</button><button class="btn out big" id="bOut">🏁 Check-out</button></div>
       <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}</div></div>
@@ -339,8 +366,21 @@ async function admExcluir(r) {
 }
 function admDraw() {
   const D = AD.d, app = document.getElementById('app');
-  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['escala', 'Escala'], ['regra', 'Regra e locais']];
+  const nChat = AD.chat ? AD.chat.naoLidas : 0;
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['regra', 'Regra e locais']];
   let body = '';
+  if (AD.tab === 'chat') {
+    const C = AD.chat || { conversas: [], msgs: [], ativo: true };
+    const cv = C.conversas.find(x => x.c === AD.conv);
+    window.ACV = C.conversas;
+    body = `${C.ativo ? '' : '<div class="card" style="color:var(--amber)">O chat está desativado: os técnicos não veem o botão de atendimento. Ative em “Regra e locais”.</div>'}
+      <div class="card">${C.conversas.map((x, i) => `<div class="prow" style="cursor:pointer;${x.c === AD.conv ? 'border-color:var(--accent)' : ''}" onclick="admAbrirConv(window.ACV[${i}].c)">
+        <div class="g"><b>${esc(x.nome || 'Sem nome')}${x.naoLidas ? ` <span style="background:var(--accent);color:#fff;border-radius:9px;padding:0 6px;font-size:11px">${x.naoLidas}</span>` : ''}</b>
+        <span class="muted" style="font-size:12px">${esc(x.evento || x.origem || '')} · ${esc(x.quando || '')}</span><span class="muted" style="font-size:12px">${x.ultDe !== 'TÉCNICO' ? '↩ ' : ''}${esc(x.ultima)}</span></div></div>`).join('') || '<div class="muted">Nenhuma mensagem ainda.</div>'}</div>
+      ${cv ? `<div class="card"><h3 style="margin:0 0 8px;font-size:15px">${esc(cv.nome)} <span class="muted" style="font-size:12px">${esc(cv.evento || '')}</span></h3>
+        <div id="admMsgs" style="max-height:50vh;overflow:auto;display:flex;flex-direction:column;gap:8px">${C.msgs.map(m => `<div class="bolha ${m.de === 'TÉCNICO' ? 'adm' : 'eu'}">${esc(m.texto)}<small>${m.de === 'TÉCNICO' ? esc(m.nome) : (m.origem === 'ADM' ? 'Administração' : 'Coordenação')} · ${esc(m.quando)}</small></div>`).join('')}</div>
+        <div class="chat-ft" style="padding:10px 0 0;border:0"><div style="display:flex;gap:8px"><textarea id="admTxt" rows="2" placeholder="Responder…">${esc(AD.txt || '')}</textarea><button class="btn pri" id="admGoChat">Enviar</button></div></div></div>` : ''}`;
+  }
   if (AD.tab === 'reg') {
     const regs = admRegs(); window.AR = regs;
     const tot = {}; regs.forEach(r => { const t = tot[r.nome] = tot[r.nome] || { n: r.nome, d: 0, h: 0, e: 0, ab: 0 }; if (r.calc) { t.d += r.calc.diarias; t.h += r.calc.horas; t.e += r.calc.extra; } else t.ab++; });
@@ -378,7 +418,8 @@ function admDraw() {
       <div class="muted" style="font-size:12px">Horas corridas, sem desconto de almoço. Até a diária = 1 diária; passou = hora extra; se a hora extra passar do limite, vira outra diária (dobra).</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0"><label>Horas de uma diária<input id="rB" type="number" step="0.5" value="${c.base}"></label>
       <label>Hora extra máxima antes da dobra (horas, ex.: 5.5 = 5h30)<input id="rL" type="number" step="0.25" value="${c.limite}"></label>
-      <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="rX" type="checkbox" style="width:auto;margin:0" ${c.exigirLocal ? 'checked' : ''}> Exigir localização no check-in (dentro do raio do local, quando ele estiver cadastrado)</label></div>
+      <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="rX" type="checkbox" style="width:auto;margin:0" ${c.exigirLocal ? 'checked' : ''}> Exigir localização no check-in em todos os eventos (dentro do raio do local, quando ele estiver cadastrado)</label>
+      <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="rC" type="checkbox" style="width:auto;margin:0" ${c.chat !== false ? 'checked' : ''}> 💬 Chat de atendimento ativo nos links dos técnicos</label></div>
       <button class="btn pri" style="margin-top:12px" id="rGo">Salvar regra</button></div>
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Locais (endereço e raio)</h3>
       <div class="muted" style="font-size:12px">O nome precisa ser igual ao LOCAL que aparece no evento (ex.: BTT). O endereço vira coordenada sozinho.</div>
@@ -390,16 +431,27 @@ function admDraw() {
       <div id="lMsg"></div><button class="btn pri" style="margin-top:12px" id="lGo">Salvar local</button></div>`;
   }
   app.style.maxWidth = '980px';
-  app.innerHTML = `<header><div class="logo">ET</div><div><h1>Administração do ponto</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
+  app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Administração do ponto</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
     <div class="tabs" style="flex-wrap:wrap">${tabs.map(([k, l]) => `<button class="btn ${AD.tab === k ? 'on' : ''}" onclick="AD.tab='${k}';admDraw()">${l}</button>`).join('')}</div>${body}
     <div class="foot">Acesso só ao ponto. Para mudar a escala, fale com a coordenação.</div>`;
   if (AD.tab === 'reg') {
     document.getElementById('fEv').onchange = e => { AD.ev = e.target.value; admDraw(); };
     const fq = document.getElementById('fQ'); fq.oninput = () => { AD.q = fq.value; const p = fq.selectionStart; admDraw(); const n = document.getElementById('fQ'); n.focus(); n.setSelectionRange(p, p); };
   }
+  if (AD.tab === 'chat') {
+    const b = document.getElementById('admMsgs'); if (b) b.scrollTop = b.scrollHeight;
+    const t = document.getElementById('admTxt');
+    if (t) {
+      t.oninput = () => { AD.txt = t.value; };
+      document.getElementById('admGoChat').onclick = async () => {
+        if (!(AD.txt || '').trim()) return;
+        try { AD.chat = await admPost({ acao: 'adm_chat_responder', c: AD.conv, texto: AD.txt }); AD.txt = ''; admDraw(); } catch (e) { alert(e.message || e); }
+      };
+    }
+  }
   if (AD.tab === 'regra') {
     document.getElementById('rGo').onclick = async () => {
-      try { await admPost({ acao: 'adm_regra', base: document.getElementById('rB').value, limite: document.getElementById('rL').value, exigir: document.getElementById('rX').checked }); avisar('✅ Regra salva.'); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+      try { await admPost({ acao: 'adm_regra', base: document.getElementById('rB').value, limite: document.getElementById('rL').value, exigir: document.getElementById('rX').checked, chat: document.getElementById('rC').checked }); avisar('✅ Regra salva.'); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
     };
     document.getElementById('lGo').onclick = async () => {
       const m = document.getElementById('lMsg'); m.innerHTML = '<div class="muted" style="margin-top:8px">Procurando o endereço no mapa…</div>';
@@ -429,18 +481,128 @@ async function admLocalExcluir(nome) {
   if (!confirm('Remover o local ' + nome + '?')) return;
   try { await admPost({ acao: 'adm_local_excluir', nome }); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
 }
+async function admChatCarregar() {
+  try { AD.chat = await apiGet({ f: 'chatadm', a: ADM, c: AD.conv || '' }); } catch (e) { return; }
+  const a = document.activeElement;
+  if (AD.d && !(a && a.id === 'admTxt')) admDraw();
+}
+function admAbrirConv(c) { AD.conv = c; AD.txt = ''; AD.chat = Object.assign({}, AD.chat, { msgs: [] }); admDraw(); admChatCarregar(); }
 async function initAdm() {
   document.title = 'Administração do ponto';
-  try { await admCarregar(); admDraw(); }
+  try { await admCarregar(); admDraw(); admChatCarregar(); }
   catch (e) { document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; }
   document.getElementById('load').style.display = 'none';
+  setInterval(() => { if (!document.hidden) admChatCarregar(); }, AD.tab === 'chat' ? 10000 : 20000);
+}
+
+/* ==================== TEMA DO MÊS ==================== */
+function temaDe(d) {
+  const m = d.getMonth() + 1, dia = d.getDate();
+  if (m === 1 && dia <= 10) return { cor: '#f5c542', ico: '🎆', txt: 'Feliz Ano Novo! Que venham grandes eventos.', chuva: ['✨', '🎉', '🥂'] };
+  if (m === 1) return { cor: '#ffb703', ico: '☀️', txt: 'Janeiro de verão: hidrate-se nas montagens!', chuva: ['☀️', '🌊'] };
+  if (m === 2) return { cor: '#c13cff', ico: '🎭', txt: 'Fevereiro de Carnaval: bom trabalho e boa folia!', chuva: ['🎉', '🎊', '🎭'] };
+  if (m === 3) return { cor: '#e64980', ico: '🌷', txt: 'Março, mês da mulher: respeito e reconhecimento todos os dias.', chuva: ['🌷', '💐'] };
+  if (m === 4) return { cor: '#b197fc', ico: '🐰', txt: 'Abril de Páscoa: renovação e boa energia na equipe.', chuva: ['🥚', '🐰', '🌼'] };
+  if (m === 5) return { cor: '#f783ac', ico: '💐', txt: 'Maio, mês das mães e do trabalhador.', chuva: ['💐', '🌸'] };
+  if (m === 6) return { cor: '#fd7e14', ico: '🎪', txt: 'Junho é Festa Junina: arraiá da base técnica!', chuva: ['🌽', '🔥', '🎏'] };
+  if (m === 7) return { cor: '#4dabf7', ico: '❄️', txt: 'Julho de inverno: agasalhe-se nas madrugadas de montagem.', chuva: ['❄️', '☕'] };
+  if (m === 8) return { cor: '#9775fa', ico: '💜', txt: 'Agosto Lilás: pelo fim da violência contra a mulher.', chuva: ['💜'] };
+  if (m === 9) return { cor: '#fcc419', ico: '🎗️', txt: 'Setembro Amarelo: falar é a melhor solução. CVV 188.', chuva: ['💛', '🎗️'] };
+  if (m === 10 && dia >= 25) return { cor: '#ff7b00', ico: '🎃', txt: 'Halloween chegando! Bom trabalho (sem sustos no palco).', chuva: ['🎃', '🦇', '🕸️'] };
+  if (m === 10) return { cor: '#f06595', ico: '🎗️', txt: 'Outubro Rosa: prevenção do câncer de mama. Cuide-se!', chuva: ['🎗️', '💗'] };
+  if (m === 11 && dia >= 13 && dia <= 21) return { cor: '#e9b949', ico: '✊🏾', txt: '20 de novembro: Dia da Consciência Negra.', chuva: ['✊🏾', '🌍'] };
+  if (m === 11) return { cor: '#339af0', ico: '🎗️', txt: 'Novembro Azul: saúde do homem. Faça seus exames!', chuva: ['💙', '🎗️'] };
+  if (m === 12 && dia >= 26) return { cor: '#f5c542', ico: '🎆', txt: 'Fim de ano! Obrigado pela temporada, equipe.', chuva: ['✨', '🎆', '🥂'] };
+  return { cor: '#2f9e44', ico: '🎄', txt: 'Feliz Natal, equipe base técnica!', chuva: ['❄️', '🎄', '⭐'] };
+}
+const icoMes = (y, m) => temaDe(new Date(y, m - 1, 5)).ico;
+function faixaTema() { const t = temaDe(new Date()); return `<div class="tema-faixa"><span class="ico">${t.ico}</span><span>${esc(t.txt)}</span></div>`; }
+function aplicarTema() {
+  const t = temaDe(new Date());
+  document.documentElement.style.setProperty('--tema', t.cor);
+  const bg = document.getElementById('temaBg'); if (!bg || bg.childElementCount) return;
+  let h = '';
+  for (let i = 0; i < 14; i++) h += `<span style="left:${(Math.random() * 100).toFixed(1)}%;font-size:${16 + Math.round(Math.random() * 22)}px;animation-duration:${14 + Math.round(Math.random() * 16)}s;animation-delay:-${Math.round(Math.random() * 25)}s">${t.chuva[i % t.chuva.length]}</span>`;
+  bg.innerHTML = h;
+}
+
+/* ==================== CHAT DE ATENDIMENTO (técnico / freelancer) ==================== */
+const CH = { aberto: false, msgs: [], ativo: false, ult: 0 };
+const chKey = () => 'chat_visto_' + (TOKEN || EV);
+function chatConv() {
+  let c = lsGet('chat_c');
+  if (!c) { c = Array.from(crypto.getRandomValues(new Uint8Array(14))).map(b => (b % 36).toString(36)).join(''); lsSet('chat_c', c); }
+  return c;
+}
+const chatId = () => EV ? { e: EV, c: chatConv() } : { t: TOKEN };
+async function chatCarregar() {
+  try { const d = await apiGet(Object.assign({ f: 'chat' }, chatId())); CH.ativo = d.ativo; CH.msgs = d.msgs || []; CH.ult = Date.now(); } catch (e) { /* offline */ }
+  chatDesenhar(); chatEnviarFila();
+}
+function chatDesenhar() {
+  const root = document.getElementById('chatRoot'); if (!root) return;
+  if (!CH.ativo) { root.innerHTML = ''; return; }
+  const visto = +(lsGet(chKey()) || 0);
+  const n = CH.msgs.filter(m => m.de !== 'TÉCNICO' && m.ts > visto).length;
+  if (!CH.aberto) { root.innerHTML = `<button class="chat-fab" onclick="chatAbrir()">💬 Atendimento${n ? ` <span class="n">${n}</span>` : ''}</button>`; return; }
+  const txtAnt = (document.getElementById('chTxt') || {}).value || '', nomeAnt = (document.getElementById('chNome') || {}).value;
+  const fila = JSON.parse(lsGet('chat_fila') || '[]');
+  const pedeNome = EV && !(lsGet('ponto_nome') || '').trim();
+  root.innerHTML = `<div class="chat-box on"><div class="chat-hd"><b style="flex:1">💬 Atendimento · coordenação</b><button class="btn" onclick="chatFechar()">✕</button></div>
+    <div class="chat-msgs" id="chatMsgs">${CH.msgs.length || fila.length ? '' : '<div class="muted" style="font-size:13px">Fale direto com a coordenação: atraso, problema no check-in, localização, dúvidas. A resposta chega aqui.</div>'}
+      ${CH.msgs.map(m => `<div class="bolha ${m.de === 'TÉCNICO' ? 'eu' : 'adm'}">${esc(m.texto)}<small>${m.de === 'TÉCNICO' ? 'Você' : 'Coordenação'} · ${esc(m.quando)}</small></div>`).join('')}
+      ${fila.map(f => `<div class="bolha eu" style="opacity:.6">${esc(f.texto)}<small>⏳ aguardando internet para enviar…</small></div>`).join('')}</div>
+    <div class="chat-ft">${pedeNome ? '<input id="chNome" placeholder="Seu nome completo" autocomplete="name">' : ''}
+      <div class="atalhos">${['Vou me atrasar', 'Não consigo fazer o check-in', 'A localização não funciona', 'Estou sem internet no local', 'Tenho uma dúvida'].map(a => `<button class="btn" onclick="chatAtalho(this.textContent)">${a}</button>`).join('')}</div>
+      <div style="display:flex;gap:8px"><textarea id="chTxt" rows="2" placeholder="Escreva sua mensagem…"></textarea><button class="btn pri" onclick="chatMandar()">Enviar</button></div></div></div>`;
+  document.getElementById('chTxt').value = txtAnt;
+  if (nomeAnt != null && document.getElementById('chNome')) document.getElementById('chNome').value = nomeAnt;
+  const box = document.getElementById('chatMsgs'); box.scrollTop = box.scrollHeight;
+  lsSet(chKey(), String(Date.now()));
+}
+function chatAtalho(t) { const x = document.getElementById('chTxt'); x.value = (x.value ? x.value + ' ' : '') + t + ': '; x.focus(); }
+function chatAbrir() { CH.aberto = true; chatDesenhar(); chatCarregar(); }
+function chatFechar() { CH.aberto = false; chatDesenhar(); }
+async function chatMandar() {
+  const nEl = document.getElementById('chNome');
+  if (nEl) { const n = nEl.value.trim(); if (n.length < 3) return alert('Digite seu nome completo.'); lsSet('ponto_nome', n); }
+  const t = document.getElementById('chTxt').value.trim(); if (!t) return;
+  const fila = JSON.parse(lsGet('chat_fila') || '[]'); fila.push({ texto: t }); lsSet('chat_fila', JSON.stringify(fila));
+  document.getElementById('chTxt').value = '';
+  chatDesenhar(); await chatEnviarFila();
+}
+let chatEnviando = false;
+async function chatEnviarFila() {
+  if (chatEnviando) return;
+  const fila = JSON.parse(lsGet('chat_fila') || '[]'); if (!fila.length) return;
+  chatEnviando = true;
+  try {
+    while (fila.length) {
+      const body = Object.assign({ acao: 'chat_enviar', texto: fila[0].texto, nome: lsGet('ponto_nome') || '' }, chatId());
+      let d;
+      try { d = await apiPost(body); }
+      catch (e) { if (/fetch|network|Failed|Load failed/i.test(e.message || '')) throw e; alert('⚠ ' + (e.message || e)); d = null; }
+      if (d && d.msgs) CH.msgs = d.msgs;
+      fila.shift(); lsSet('chat_fila', JSON.stringify(fila));
+    }
+  } catch (e) { /* sem internet: fica na fila e tenta de novo */ }
+  chatEnviando = false; chatDesenhar();
+}
+window.addEventListener('online', () => { chatEnviarFila(); chatCarregar(); });
+function iniciarChat() {
+  chatCarregar();
+  setInterval(() => { if (!document.hidden && (CH.aberto || Date.now() - CH.ult > 60000)) chatCarregar(); }, 10000);
 }
 
 if (ADM) {
   initAdm();
 } else if (EV) {
+  aplicarTema();
   initEvento();
+  iniciarChat();
 } else {
+  aplicarTema();
+  iniciarChat();
   refresh(true);
   loadPonto();
   setInterval(() => { if (!document.hidden) refresh(); }, 60000);
