@@ -5,6 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Minha agenda</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#0b0b0c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Minha agenda">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0b0b0c;--panel:#151517;--panel2:#1d1d20;--line:#2a2a2f;--text:#f2f2f3;--muted:#9a9aa3;--dim:#66666e;--accent:#c8161d;--brand:#9e0f1c;--ok:#1fbf75;--amber:#f5b83d;--red:#ff5b5f;--tema:#c8161d}
@@ -180,6 +186,7 @@ function render(changed) {
   document.getElementById('app').innerHTML = `
   <header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>${esc(ag.nome)}</h1><div class="sub"><i style="${S.syncing ? 'background:var(--amber)' : ''}"></i>${S.syncing ? 'Atualizando…' : 'Agenda ao vivo · atualizada às ' + new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
   ${faixaTema()}
+  ${instalavel() ? `<button class="btn" style="width:100%;justify-content:center;margin-bottom:14px" onclick="instalarAgenda()">📲 Instalar na tela inicial do celular</button>` : ''}
   <div id="ponto">${pontoCardHtml()}</div>
   ${next ? `<div class="card next ${changed ? 'flash' : ''}"><div class="l">${next.from <= t ? 'Agora' : 'Próximo trabalho'}</div><h2>${esc(next.evento)}</h2>
     <div class="muted">${f(next.from)} (${dow(next.from)})${next.from !== next.to ? ' até ' + f(next.to) : ''} · ${esc(next.role)}${next.local ? ' · ' + esc(next.local) : ''}</div>
@@ -494,6 +501,24 @@ async function initAdm() {
   document.getElementById('load').style.display = 'none';
   setInterval(() => { if (!document.hidden) admChatCarregar(); }, AD.tab === 'chat' ? 10000 : 20000);
 }
+
+/* ==================== INSTALAR NA TELA INICIAL ==================== */
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (S.ag) render(false); });
+const jaInstalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const instalavel = () => !jaInstalado();
+function instalarAgenda() {
+  if (installEvt) { installEvt.prompt(); installEvt = null; return; }
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const el = document.getElementById('pm');
+  el.innerHTML = `<div class="box"><h3>📲 Instalar a agenda</h3>
+    ${ios ? '<p>No iPhone, abra este link no <b>Safari</b>, toque em <b>Compartilhar</b> (quadrado com seta ⬆) e depois em <b>Adicionar à Tela de Início</b>.</p>'
+          : '<p>No Android, no <b>Chrome</b>: toque no menu <b>⋮</b> (canto superior) e depois em <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</p>'}
+    <p class="muted" style="font-size:13px">O ícone <b>bt</b> fica na tela do celular e abre direto na sua agenda, já atualizada.</p>
+    <div class="acts"><button class="btn pri" onclick="closeP()">Entendi</button></div></div>`;
+  el.style.display = 'grid';
+}
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 /* ==================== TEMA DO MÊS ==================== */
 function temaDe(d) {
