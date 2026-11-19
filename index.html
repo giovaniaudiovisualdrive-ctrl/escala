@@ -221,6 +221,7 @@ const ALIM = ['Local forneceu', 'Pago pelo coordenador', 'Pago por mim', 'Não t
 async function apiGet(params) {
   params = Object.assign({}, params);
   if (params.c) { params.rc = params.c; delete params.c; }   // o Apps Script não aceita um parâmetro chamado "c" na URL
+  if (params.k) { params.cg = params.k; delete params.k; }
   const r = await fetch(API + '?' + new URLSearchParams(Object.assign(params, { _: Date.now() })), { credentials: 'omit', cache: 'no-store' });
   const d = await r.json(); if (d.erro) throw new Error(d.erro); return d;
 }
@@ -545,6 +546,38 @@ const corrHtml = (lista, ctxTxt, depoisTxt, comNome) => (window.PC = lista || []
   <span class="muted" style="font-size:12px">${c.motorista ? '🚐 Check-in motorista' : c.tipo === 'SAÍDA' ? 'Check-out' : 'Check-in'} informado: ${esc(c.inf)}</span></div>
   <button class="btn pri" onclick="corrigirHora(window.PC[${i}], ${ctxTxt}, ${depoisTxt})">Corrigir</button></div>`).join('');
 
+/* ----- relatório de horas por evento ----- */
+/** ctx = { t, ev? } (agenda individual) ou { e, nome? } (link do evento: a pessoa digita o nome) */
+async function abrirRelatorio(ctx) {
+  const el = document.getElementById('pm');
+  if (ctx.e && !ctx.nome) {
+    el.innerHTML = `<div class="box"><h3>📄 Relatório de horas</h3><div class="muted" style="font-size:13px">Digite o seu nome como você usou no check-in.</div>
+      <label>Seu nome completo<input id="rNome" value="${esc(lsGet('ponto_nome') || '')}" autocomplete="name"></label><div id="rMsg"></div>
+      <div class="acts"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="rGo">Ver relatório</button></div></div>`;
+    el.style.display = 'grid';
+    document.getElementById('rGo').onclick = () => { const n = document.getElementById('rNome').value.trim(); if (n.length < 3) { document.getElementById('rMsg').innerHTML = '<div class="msg-err">Digite seu nome completo.</div>'; return; } abrirRelatorio(Object.assign({}, ctx, { nome: n })); };
+    return;
+  }
+  el.innerHTML = '<div class="box"><h3>📄 Relatório de horas</h3><div class="spin" style="margin:18px auto"></div></div>'; el.style.display = 'grid';
+  let d;
+  try { d = await apiGet(Object.assign({ f: 'relatorio' }, ctx.t ? { t: ctx.t, ev: ctx.ev || '' } : { e: ctx.e, nome: ctx.nome })); }
+  catch (e) { el.innerHTML = `<div class="box"><h3>📄 Relatório de horas</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts">${ctx.e ? '<button class="btn" id="rOutro">Outro nome</button>' : ''}<button class="btn pri" onclick="closeP()">Fechar</button></div></div>`;
+    const ro = document.getElementById('rOutro'); if (ro) ro.onclick = () => abrirRelatorio({ e: ctx.e }); return; }
+  const txt = g => '*Relatório de horas · ' + g.evento + '*\n' + d.nome + '\n' + g.dias.map(x => x.in + ' → ' + (x.out || 'em andamento') + (x.calc ? ' · ' + fmtH(x.calc.horas) + (x.calc.extra ? ' (HE ' + fmtH(x.calc.extra) + ')' : '') : '')).join('\n') +
+    '\n*Total: ' + fmtH(g.total.horas) + ' · ' + g.total.diarias + ' diária' + (g.total.diarias !== 1 ? 's' : '') + ' · hora extra ' + fmtH(g.total.extra) + '*' + (g.pendentes ? '\n(' + g.pendentes + ' dia(s) aguardando confirmação do horário)' : '');
+  window.RL = d.eventos.map(txt);
+  el.innerHTML = `<div class="box"><h3>📄 Relatório de horas</h3><div class="muted" style="font-size:13px">${esc(d.nome)} · diária de ${d.cfg.base} h, hora extra até ${fmtH(d.cfg.limite)}</div>
+    ${d.eventos.map((g, i) => `<div style="margin-top:14px;border:1px solid var(--line);border-radius:12px;padding:12px">
+      <b>${esc(g.evento)}</b><span class="muted" style="font-size:12px">${g.os ? ' · ' + esc(g.os) : ''}</span>
+      ${g.dias.map(x => `<div class="prow" style="padding:6px 0"><div class="g"><span style="font-size:13px">${esc(x.in)} → ${x.out ? esc(x.out) : '<b style="color:var(--amber)">em andamento</b>'}</span>${x.role ? `<span class="muted" style="font-size:11px;display:block">${esc(x.role)}</span>` : ''}</div>
+        <div style="font-size:12px;text-align:right">${x.calc ? `<b>${fmtH(x.calc.horas)}</b><span class="muted">${x.calc.diarias} diária${x.calc.diarias > 1 ? 's' : ''}${x.calc.extra ? ' · HE ' + fmtH(x.calc.extra) : ''}</span>` : (x.out ? '<span style="color:var(--amber)">⏳ aguardando confirmação</span>' : '')}</div></div>`).join('')}
+      ${calcHtml(g.total)}
+      ${g.pendentes ? `<div class="muted" style="font-size:12px;color:var(--amber)">⏳ ${g.pendentes} dia(s) ainda aguardando a confirmação do horário: entram no total depois de confirmados.</div>` : ''}
+      ${g.abertos ? `<div class="muted" style="font-size:12px">${g.abertos} check-in ainda sem check-out.</div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" onclick="copiar(window.RL[${i}])">📋 Copiar</button><a class="btn" style="text-decoration:none;color:inherit" href="https://wa.me/?text=${encodeURIComponent(txt(g))}" target="_blank" rel="noopener">📲 WhatsApp</a></div></div>`).join('')}
+    <div class="acts"><button class="btn pri" onclick="closeP()">Fechar</button></div></div>`;
+}
+
 /** Abre o formulário de check-in ou check-out. o = { acao, sub, evento, role, pedirNome, id, depois } */
 function abrirPonto(o) {
   const opt = () => '<option value="">Selecione…</option>' + ALIM.map(a => `<option>${esc(a)}</option>`).join('');
@@ -594,7 +627,10 @@ function abrirPonto(o) {
       if (o.acao === 'checkout' && r.calc) {
         const hist = JSON.parse(lsGet('ponto_hist') || '[]'); hist.unshift({ ev: o.sub, in: r.in, out: r.out, calc: r.calc }); lsSet('ponto_hist', JSON.stringify(hist.slice(0, 10)));
       }
-      msg.innerHTML = `<div class="msg-ok">${esc(r.msg)}</div>${calcHtml(r.calc)}${avisarHtml(r.avisar)}`;
+      msg.innerHTML = `<div class="msg-ok">${esc(r.msg)}</div>${calcHtml(r.calc)}${avisarHtml(r.avisar)}` +
+        (o.acao === 'checkout' ? `<button class="btn" id="pRel" style="width:100%;justify-content:center;margin-top:10px">📄 Relatório de horas deste evento</button>` : '');
+      const pr = document.getElementById('pRel');
+      if (pr) pr.onclick = () => abrirRelatorio(body.t ? { t: body.t, ev: o.evento } : { e: body.e, nome: body.nome || (o.abertos && o.abertos.find(a => a.id === body.id) || {}).nome || lsGet('ponto_nome') || '' });
       document.getElementById('pActs').innerHTML = '<button class="btn pri" onclick="closeP()">OK</button>';
       if (o.depois) o.depois();
     } catch (e) {
@@ -630,7 +666,8 @@ function pontoCardHtml() {
     ${c.alertas && c.alertas.length ? `<div style="flex-basis:100%">${alertasHtml(c.alertas)}</div>` : ''}</div>`).join('');
   const scanOutro = !p.abertos.length ? `<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="${act({ acao: 'checkin', qr: true, evento: '', sub: '', role: '', exigir: false, depois: loadPonto })}">📷 Check-in com QR Code (outro evento)</button>` : '';
   return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${corr}${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
-    ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}</div>`;
+    ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}
+    ${p.abertos.length || p.recentes.length ? '<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="abrirRelatorio({ t: TOKEN })">📄 Relatório de horas por evento</button>' : ''}</div>`;
 }
 async function loadPonto() {
   try { S.ponto = await apiGet({ f: 'ponto', t: TOKEN }); } catch (e) { S.ponto = { erro: e.message || String(e) }; }
@@ -675,6 +712,7 @@ async function initEvento() {
     <div class="card"><div style="font-size:14px;margin-bottom:12px">${aberto ? 'Você está com <b>check-in aberto</b> neste evento. Ao sair, faça o check-out.' : 'Registre sua <b>entrada</b> ao chegar e a <b>saída</b> ao terminar.'}</div>
       <div style="display:flex;gap:8px"><button class="btn pri big" id="bIn">✅ Check-in</button><button class="btn out big" id="bOut">🏁 Check-out</button></div>
       ${d.motorista && !aberto ? '<button class="btn big" id="bMot" style="width:100%;justify-content:center;margin-top:8px">🚐 Check-in motorista</button>' : ''}
+      <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirRelatorio({ e: EV })">📄 Relatório das minhas horas neste evento</button>
       <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}${d.qr ? ' · ▣ Escaneie o QR Code na tela do responsável.' : ''}</div></div>
     ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · HE ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
     <div class="foot">Os registros vão direto para a coordenação.</div>`;
@@ -734,6 +772,10 @@ function admEditar(r) {
     catch (e) { document.getElementById('aMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
   };
 }
+async function admCoordDel(i) {
+  const c = window.ACG[i]; if (!confirm('Remover ' + c.nome + ' dos coordenadores? O link dele para de funcionar.')) return;
+  try { const r = await admPost({ acao: 'adm_coord_del', id: c.id }); avisar(r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+}
 async function admExcluir(r) {
   if (!confirm(`Excluir o registro de ${r.nome} (${r.evento}, ${r.in})? Não dá para desfazer.`)) return;
   try { await admPost({ acao: 'adm_excluir', id: r.id }); avisar('Registro excluído.'); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
@@ -741,7 +783,7 @@ async function admExcluir(r) {
 function admDraw() {
   const D = AD.d, app = document.getElementById('app');
   const nChat = AD.chat ? AD.chat.naoLidas : 0;
-  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['regra', 'Regra e locais']];
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '👥 Coordenadores'], ['regra', 'Regra e locais']];
   let body = '';
   if (AD.tab === 'chat') {
     const C = AD.chat || { conversas: [], msgs: [], ativo: true };
@@ -787,6 +829,18 @@ function admDraw() {
         <button class="btn" onclick="abrirConferir({ a: ADM, ev: window.AL[${i}].key, depois: () => admCarregar().then(admDraw) })">⏱ Conferir${e.pendentes ? ` <span class="nb">${e.pendentes}</span>` : ''}</button>
         <button class="btn" onclick="copiar(window.AL[${i}].link)">Copiar</button>
         <button class="btn pri" onclick="window.open('https://wa.me/?text='+encodeURIComponent('*Check-in / check-out · '+window.AL[${i}].nome+'*\\nFaça seu check-in ao chegar e o check-out ao sair:\\n'+window.AL[${i}].link),'_blank')">WhatsApp</button></div>`; }).join('') || '<div class="muted">Nenhum evento em andamento ou futuro.</div>'}</div>`;
+  } else if (AD.tab === 'coordg') {
+    window.ACG = D.coordenadores || [];
+    body = `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">👥 Coordenadores</h3>
+      <div class="muted" style="font-size:12px">Cada coordenador recebe um link só dele: vê a escala de todos os eventos e manda o link de check-in do evento e a agenda individual de cada técnico. Não altera nada. Só você cadastra e envia esses links; remover desliga o link na hora.</div>
+      ${window.ACG.map((c, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${c.wa ? esc(c.wa) + ' · ' : ''}desde ${esc(c.criado)}</span></div>
+        <a class="btn pri" style="text-decoration:none" href="${esc(c.waLink)}" target="_blank" rel="noopener">📲 WhatsApp</a>
+        <button class="btn" onclick="copiar(window.ACG[${i}].link)">Copiar link</button>
+        <button class="btn" onclick="admCoordDel(${i})">🗑 Remover</button></div>`).join('') || '<div class="muted" style="font-size:13px;margin-top:8px">Nenhum coordenador ainda.</div>'}
+      <div class="pm" style="position:static;display:block;background:none;padding:0">
+        <label>Nome<input id="cgN" list="cgL" placeholder="Ex.: ERIC" autocapitalize="characters"><datalist id="cgL">${(D.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
+        <label>Celular (WhatsApp), opcional<input id="cgW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
+      <div id="cgMsg"></div><button class="btn pri" style="margin-top:12px" id="cgGo">➕ Cadastrar e gerar link</button></div>`;
   } else if (AD.tab === 'escala') {
     body = D.eventos.map(e => `<div class="card"><b>${esc(e.nome)}</b> <span class="muted" style="font-size:12px">${esc(e.os)}</span>
       <div class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.status || '')}</div>
@@ -817,6 +871,14 @@ function admDraw() {
   if (AD.tab === 'reg') {
     document.getElementById('fEv').onchange = e => { AD.ev = e.target.value; admDraw(); };
     const fq = document.getElementById('fQ'); fq.oninput = () => { AD.q = fq.value; const p = fq.selectionStart; admDraw(); const n = document.getElementById('fQ'); n.focus(); n.setSelectionRange(p, p); };
+  }
+  if (AD.tab === 'coordg') {
+    const wa = {}; (D.equipeWa || []).forEach(x => { wa[norm(x.nome)] = x.wa; });
+    document.getElementById('cgN').onchange = e => { const t = wa[norm(e.target.value)], f = document.getElementById('cgW'); if (t && !f.value) f.value = t; };
+    document.getElementById('cgGo').onclick = async () => {
+      try { const r = await admPost({ acao: 'adm_coord_add', nome: document.getElementById('cgN').value, wa: document.getElementById('cgW').value }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); }
+      catch (e) { document.getElementById('cgMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+    };
   }
   if (AD.tab === 'chat') {
     const b = document.getElementById('admMsgs'); if (b) b.scrollTop = b.scrollHeight;
@@ -909,6 +971,46 @@ async function initAdm() {
   catch (e) { document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; }
   document.getElementById('load').style.display = 'none';
   setInterval(() => { if (!document.hidden) admChatCarregar(); }, AD.tab === 'chat' ? 10000 : 20000);
+}
+
+/* ----- coordenador (?k=): vê a escala e manda os links, sem alterar nada ----- */
+const COORDG = new URLSearchParams(location.search).get('k') || '';
+const CG = { aba: 'ev', q: '', d: null };
+function cgEnviar(link, titulo, texto) {
+  if (navigator.share) navigator.share({ title: titulo, text: texto, url: link }).catch(() => {});
+  else window.open('https://wa.me/?text=' + encodeURIComponent(texto + '\n' + link), '_blank');
+}
+function cgDraw() {
+  const D = CG.d, app = document.getElementById('app'), f = norm(CG.q);
+  window.CGE = D.eventos; window.CGP = D.equipe;
+  const evs = D.eventos.filter(e => !f || norm([e.nome, e.os, e.local, e.equipe.map(p => p.nome).join(' ')].join(' ')).includes(f));
+  const atuais = evs.filter(e => e.endIso >= D.hoje), passados = evs.filter(e => e.endIso < D.hoje).reverse();
+  const card = e => { const i = D.eventos.indexOf(e); return `<div class="card"><b>${esc(e.nome)}</b> <span class="muted" style="font-size:12px">${esc(e.os || '')}</span>
+    <div class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''}${e.local ? ' · ' + esc(e.local) : ''}${e.status ? ' · ' + esc(e.status) : ''}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn pri" onclick="cgEnviar(window.CGE[${i}].link,'Check-in · '+window.CGE[${i}].nome,'*Check-in / check-out · '+window.CGE[${i}].nome+'*\\nFaça seu check-in ao chegar e o check-out ao sair:')">🔗 Enviar link de check-in</button>
+      <button class="btn" onclick="copiar(window.CGE[${i}].link)">Copiar</button></div>
+    <div class="muted" style="font-size:11px;margin-top:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Equipe na escala</div>
+    ${e.equipe.map((p, j) => `<div class="prow" style="padding:6px 0"><div class="g"><b style="font-size:14px">${esc(p.nome)}</b></div>
+      <button class="btn" onclick="cgEnviar(window.CGE[${i}].equipe[${j}].link,'Agenda · '+window.CGE[${i}].equipe[${j}].nome,'*Sua agenda individual · '+window.CGE[${i}].equipe[${j}].nome+'*\\nAqui você vê seus eventos e faz o check-in/check-out:')">📅 Agenda</button></div>`).join('') || '<div class="muted" style="font-size:12px">Sem equipe na escala.</div>'}</div>`; };
+  const pessoas = D.equipe.filter(p => !f || norm(p.nome).includes(f));
+  app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Coordenação</h1><div class="sub">${esc(D.nome)} · escala e links</div></div></header>
+    ${faixaTema()}
+    <div class="tabs" style="flex-wrap:wrap"><button class="btn ${CG.aba === 'ev' ? 'on' : ''}" onclick="CG.aba='ev';cgDraw()">📋 Eventos</button><button class="btn ${CG.aba === 'eq' ? 'on' : ''}" onclick="CG.aba='eq';cgDraw()">👤 Equipe</button></div>
+    <div class="card"><input id="cgQ" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:15px" placeholder="${CG.aba === 'ev' ? 'Buscar evento, OS, local ou técnico…' : 'Buscar técnico…'}" value="${esc(CG.q)}"></div>
+    ${CG.aba === 'ev' ? (atuais.map(card).join('') || '<div class="card muted">Nenhum evento em andamento ou futuro.</div>') + (passados.length ? `<div class="muted" style="font-size:11px;margin:14px 4px 6px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos 7 dias</div>${passados.map(card).join('')}` : '')
+      : `<div class="card">${pessoas.map(p => { const j = D.equipe.indexOf(p); return `<div class="prow"><div class="g"><b>${esc(p.nome)}</b></div>
+        <button class="btn" onclick="cgEnviar(window.CGP[${j}].link,'Agenda · '+window.CGP[${j}].nome,'*Sua agenda individual · '+window.CGP[${j}].nome+'*\\nAqui você vê seus eventos e faz o check-in/check-out:')">📅 Enviar</button>
+        <button class="btn" title="Copiar link" onclick="copiar(window.CGP[${j}].link)">📋</button></div>`; }).join('') || '<div class="muted">Ninguém encontrado.</div>'}</div>`}
+    ${instalavel() ? '<button class="btn" style="width:100%;justify-content:center" onclick="instalarAgenda()">📲 Salvar na tela inicial</button>' : ''}
+    <div class="foot">Acesso só para ver a escala e enviar links. Este link é só seu: não compartilhe.</div>`;
+  const q = document.getElementById('cgQ'); q.oninput = () => { CG.q = q.value; const p = q.selectionStart; cgDraw(); const n = document.getElementById('cgQ'); n.focus(); n.setSelectionRange(p, p); };
+}
+async function initCoordG() {
+  document.title = 'Coordenação';
+  try { CG.d = await apiGet({ f: 'coordg', k: COORDG }); cgDraw(); }
+  catch (err) { document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; }
+  document.getElementById('load').style.display = 'none';
+  setInterval(async () => { if (document.hidden || document.activeElement && document.activeElement.id === 'cgQ') return; try { CG.d = await apiGet({ f: 'coordg', k: COORDG }); cgDraw(); } catch (e) {} }, 120000);
 }
 
 /* ----- responsável pelo ponto (?c=, link recebido no WhatsApp) ----- */
@@ -1073,6 +1175,9 @@ if (ADM) {
 } else if (COORD) {
   aplicarTema();
   initCoord();
+} else if (COORDG) {
+  aplicarTema();
+  initCoordG();
 } else if (EV) {
   aplicarTema();
   initEvento();
