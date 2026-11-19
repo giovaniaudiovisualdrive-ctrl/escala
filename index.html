@@ -722,7 +722,7 @@ function admDraw() {
   }
   if (AD.tab === 'reg') {
     const regs = admRegs(); window.AR = regs;
-    const tot = {}; regs.forEach(r => { const t = tot[r.nome] = tot[r.nome] || { n: r.nome, d: 0, h: 0, e: 0, ab: 0, cf: 0 }; if (r.calc) { t.d += r.calc.diarias; t.h += r.calc.horas; t.e += r.calc.extra; } else if (r.out) t.cf++; else t.ab++; });
+    const tot = {}; regs.forEach(r => { const t = tot[r.pessoa || r.nome] = tot[r.pessoa || r.nome] || { n: r.pessoa || r.nome, d: 0, h: 0, e: 0, ab: 0, cf: 0 }; if (r.calc) { t.d += r.calc.diarias; t.h += r.calc.horas; t.e += r.calc.extra; } else if (r.out) t.cf++; else t.ab++; });
     const evs = D.eventos.filter(e => D.registros.some(r => r.key === e.key) || e.key === AD.ev);
     body = `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">
         <select id="fEv" style="flex:1;min-width:200px"><option value="">Todos os eventos</option>${evs.map(e => `<option value="${esc(e.key)}" ${e.key === AD.ev ? 'selected' : ''}>${esc(e.nome)} · ${esc(e.start)}</option>`).join('')}</select>
