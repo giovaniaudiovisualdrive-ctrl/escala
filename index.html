@@ -93,6 +93,16 @@ body{background:var(--bg)}
 .chat-ft textarea,.chat-ft input{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--text);font:inherit;font-size:16px}
 .atalhos{display:flex;gap:6px;flex-wrap:wrap}.atalhos button{font-size:12px;padding:5px 9px}
 .msg-err{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(255,91,95,.15);color:var(--red);font-weight:600}
+/* ---------- QR Code ---------- */
+.scan{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:1/1;width:100%;margin-top:12px}
+.scan video{width:100%;height:100%;object-fit:cover;display:block}
+.scan .mira{position:absolute;inset:15%;border:3px solid rgba(255,255,255,.9);border-radius:16px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.pm .box.qrtela{width:min(520px,100%)}
+.qrbox{background:#fff;border-radius:16px;padding:12px;margin:12px auto 6px;width:min(82vw,400px)}
+.qrbox svg{display:block;width:100%;height:auto}
+.qrcod{font:800 40px/1.1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;text-align:center}
+.qrbar{height:6px;border-radius:6px;background:var(--panel2);overflow:hidden;margin:6px 0}.qrbar i{display:block;height:100%;width:100%;background:var(--accent);transition:width 1s linear}
+.qrok{margin-bottom:14px;padding:10px 12px;border-radius:10px;background:rgba(31,191,117,.15);color:var(--ok);font-weight:600;font-size:13px}
 </style>
 </head>
 <body>
@@ -221,13 +231,199 @@ const calcHtml = c => c ? `<div class="calc"><div><b>${fmtH(c.horas)}</b>trabalh
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
 function closeP() { document.getElementById('pm').style.display = 'none'; }
-function pegarLocal() {
+const IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function msgGeo(code) {
+  if (code === 1) return IOS
+    ? 'A localização está bloqueada. No iPhone: Ajustes → Privacidade e Segurança → Serviços de Localização (ligado) → role até "Sites do Safari" → "Durante o Uso" e ligue "Localização Precisa". Se abriu pelo app instalado ou pelo WhatsApp, teste também abrindo o link no Safari. Depois toque em Tentar de novo.'
+    : 'A localização está bloqueada. Toque no cadeado (ou ⋮) do navegador → Configurações do site → Localização → Permitir, e confira se a Localização do celular está ligada. Depois toque em Tentar de novo.';
+  if (code === 2) return 'O celular não achou sua posição. Ligue a Localização/GPS e, se estiver em lugar fechado, chegue perto de uma porta ou janela.';
+  return 'A localização demorou demais para responder. Tente de novo em local mais aberto.';
+}
+/**
+ * Localização com várias tentativas: o iPhone costuma demorar ou mandar a primeira leitura imprecisa.
+ * Nunca trava: em no máximo `tempo` ms devolve { loc:{lat,lng,acc} } ou { erro, code }.
+ */
+function pegarLocal(tempo) {
+  tempo = tempo || 15000;
   return new Promise(res => {
-    if (!navigator.geolocation) return res(null);
-    navigator.geolocation.getCurrentPosition(
-      p => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
-      () => res(null), { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+    if (!navigator.geolocation) return res({ erro: 'Este navegador não oferece localização.', code: 2 });
+    let melhor = null, fim = false, wid = null, t2 = null, t3 = null;
+    const acabar = r => { if (fim) return; fim = true; clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); if (wid != null) try { navigator.geolocation.clearWatch(wid); } catch (e) {} res(r); };
+    const ok = p => {
+      const c = p.coords, x = { lat: c.latitude, lng: c.longitude, acc: Math.round(c.accuracy || 0) };
+      if (!melhor || x.acc < melhor.acc) melhor = x;
+      if (melhor.acc <= 40) return acabar({ loc: melhor });
+      if (!t2) t2 = setTimeout(() => acabar({ loc: melhor }), 4000);   // já tem leitura: espera até 4 s por uma mais precisa
+    };
+    const err = e => {
+      if (melhor) return acabar({ loc: melhor });
+      if (e && e.code === 1) return acabar({ erro: msgGeo(1), code: 1 });
+      if (e && e.code === 2 && !t3) t3 = setTimeout(() => acabar(melhor ? { loc: melhor } : { erro: msgGeo(2), code: 2 }), 3000);
+    };
+    try { navigator.geolocation.getCurrentPosition(ok, err, { enableHighAccuracy: true, timeout: tempo, maximumAge: 20000 }); } catch (e) {}
+    try { wid = navigator.geolocation.watchPosition(ok, err, { enableHighAccuracy: true, timeout: tempo, maximumAge: 0 }); } catch (e) {}
+    const t1 = setTimeout(() => acabar(melhor ? { loc: melhor } : { erro: msgGeo(3), code: 3 }), tempo);
   });
+}
+
+/* ---------- QR Code do responsável ---------- */
+const LIB_QR = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+const LIB_JSQR = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+function carregarScript(src, pronto) {
+  return new Promise((ok, no) => {
+    if (pronto()) return ok();
+    const s = document.createElement('script'); s.src = src;
+    s.onload = () => ok(); s.onerror = () => no(new Error('Sem internet para carregar o leitor.'));
+    document.head.appendChild(s);
+  });
+}
+/** Texto do QR: link do evento com ?e=…&qr=123456 (ou só os 6 números). */
+function lerTextoQR(txt) {
+  txt = String(txt || '').trim();
+  if (/^\d{6}$/.test(txt)) return { qr: txt };
+  try { const u = new URL(txt), qr = u.searchParams.get('qr'); if (qr && /^\d{6}$/.test(qr)) return { qr: qr, e: u.searchParams.get('e') || '' }; } catch (e) {}
+  return null;
+}
+let CAM = null;
+function pararCamera() { if (CAM) { CAM.on = false; try { CAM.s.getTracks().forEach(t => t.stop()); } catch (e) {} CAM = null; } }
+async function abrirCamera(box, aoLer, aoFalhar) {
+  pararCamera();
+  const video = box.querySelector('video');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return aoFalhar('Este navegador não abre a câmera. Digite o código de 6 números.');
+  let st;
+  try { st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false }); }
+  catch (e) {
+    const neg = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+    return aoFalhar(neg ? (IOS ? 'A câmera está bloqueada. No iPhone: Ajustes → Safari → Câmera → Permitir (ou toque em "aA" na barra → Ajustes do Site → Câmera).' : 'A câmera está bloqueada. Toque no cadeado (ou ⋮) do navegador → Configurações do site → Câmera → Permitir.') + ' Ou digite o código abaixo.'
+                        : 'Não consegui abrir a câmera. Digite o código abaixo.');
+  }
+  if (!document.body.contains(box)) { st.getTracks().forEach(t => t.stop()); return; }
+  CAM = { s: st, on: true }; const cam = CAM;
+  video.setAttribute('playsinline', ''); video.srcObject = st; try { await video.play(); } catch (e) {}
+  let det = null; try { if ('BarcodeDetector' in window) det = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { det = null; }
+  if (!det) { try { await carregarScript(LIB_JSQR, () => window.jsQR); } catch (e) { return aoFalhar(e.message + ' Digite o código abaixo.'); } }
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+  const loop = async () => {
+    if (!cam.on) return;
+    try {
+      if (video.readyState >= 2 && video.videoWidth) {
+        let txt = null;
+        if (det) { const r = await det.detect(video); if (r && r[0]) txt = r[0].rawValue; }
+        else {
+          const w = Math.min(640, video.videoWidth), h = Math.round(video.videoHeight * w / video.videoWidth);
+          cv.width = w; cv.height = h; cx.drawImage(video, 0, 0, w, h);
+          const r = jsQR(cx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' }); if (r) txt = r.data;
+        }
+        const q = txt && lerTextoQR(txt);
+        if (q) { if (navigator.vibrate) navigator.vibrate(80); pararCamera(); return aoLer(q); }
+      }
+    } catch (e) { /* tenta o próximo quadro */ }
+    setTimeout(loop, 160);
+  };
+  loop();
+}
+/** Abre a câmera; devolve { qr, e } lido da tela do responsável (ou os 6 números digitados), ou null se cancelar. */
+function lerQR(titulo) {
+  return new Promise(resolve => {
+    const el = document.getElementById('pm');
+    const fim = r => { pararCamera(); closeP(); resolve(r); };
+    el.innerHTML = `<div class="box"><h3>📷 ${esc(titulo || 'QR Code do responsável')}</h3><div class="muted" style="font-size:13px">Aponte a câmera para o QR Code na tela do responsável pelo evento.</div>
+      <div class="scan" id="qCam"><video playsinline muted autoplay></video><div class="mira"></div></div><div id="qMsg"></div>
+      <label>Ou digite os 6 números embaixo do QR<input id="qCod" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000 000" style="font-size:24px;letter-spacing:6px;text-align:center"></label>
+      <div class="acts"><button class="btn" id="qX">Cancelar</button><button class="btn pri" id="qOk">Usar código</button></div></div>`;
+    el.style.display = 'grid';
+    document.getElementById('qX').onclick = () => fim(null);
+    document.getElementById('qOk').onclick = () => {
+      const c = document.getElementById('qCod').value.replace(/\D/g, '');
+      if (c.length !== 6) { document.getElementById('qMsg').innerHTML = '<div class="msg-err">Digite os 6 números.</div>'; return; }
+      fim({ qr: c });
+    };
+    abrirCamera(document.getElementById('qCam'), q => fim(q), m => {
+      const v = document.getElementById('qCam'); if (v) v.style.display = 'none';
+      const mm = document.getElementById('qMsg'); if (mm) mm.innerHTML = `<div class="msg-err">${esc(m)}</div>`;
+    });
+  });
+}
+/** Lê (ou usa o já lido) e confere o QR no servidor. Devolve { passe, evento, e, exigir } ou null. */
+async function validarQR(q, ctx, titulo) {
+  q = q || await lerQR(titulo);
+  if (!q) return null;
+  const el = document.getElementById('pm');
+  el.innerHTML = '<div class="box"><h3>Conferindo o QR Code…</h3><div class="spin" style="margin:18px auto"></div></div>'; el.style.display = 'grid';
+  try {
+    const r = await apiGet(Object.assign({ f: 'qrcheck', qr: q.qr }, q.e ? { e: q.e } : EV ? { e: EV } : ctx && ctx.ev ? { ev: ctx.ev } : { t: TOKEN }));
+    closeP(); return r;
+  } catch (e) {
+    el.innerHTML = `<div class="box"><h3>QR Code não aceito</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts"><button class="btn" id="qF">Fechar</button><button class="btn pri" id="qT">Escanear de novo</button></div></div>`;
+    return new Promise(res => {
+      document.getElementById('qF').onclick = () => { closeP(); res(null); };
+      document.getElementById('qT').onclick = async () => res(await validarQR(null, ctx, titulo));
+    });
+  }
+}
+/** Check-in / check-out: se o evento usa QR Code, lê o QR antes de abrir o formulário. */
+async function iniciarPonto(o) {
+  if (o.qr) {
+    const r = await validarQR(o.qrLido || null, { ev: o.evento }, (o.acao === 'checkin' ? 'Check-in' : 'Check-out') + (o.sub ? ' · ' + o.sub : ''));
+    if (!r) return;
+    if (!EV && o.evento && r.evento.key !== o.evento) {
+      if (o.acao === 'checkout') { alert('Este QR Code é de outro evento (' + r.evento.nome + '). Escaneie o QR do evento ' + o.sub + '.'); return; }
+      o.role = '';
+    }
+    if (!EV) { const h = (S.ponto && S.ponto.eventosHoje || []).find(x => x.key === r.evento.key); if (h && !o.role) o.role = h.role; }
+    o.passe = r.passe; o.evento = r.evento.key; o.sub = r.evento.nome; o.exigir = r.exigir;
+  }
+  abrirPonto(o);
+}
+async function codigoQR(semente, janela) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(semente), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const b = new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(String(janela))));
+  return String((((b[0] & 0x7f) << 24) | (b[1] << 16) | (b[2] << 8) | b[3]) % 1000000).padStart(6, '0');
+}
+function svgQR(texto) {
+  const q = qrcode(0, 'M'); q.addData(texto); q.make();
+  const n = q.getModuleCount(), m = 2, t = n + m * 2; let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${t} ${t}" shape-rendering="crispEdges"><rect width="${t}" height="${t}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+/** Tela do responsável: QR Code que muda a cada 30 s + presença da equipe. ctx = { t | a, ev } */
+let QRT = null, WL = null;
+function pararQR() { if (QRT) { clearInterval(QRT.t); clearInterval(QRT.p); QRT = null; } try { WL && WL.release(); } catch (e) {} WL = null; }
+function fecharQR() { pararQR(); closeP(); }
+async function manterTela() { try { if ('wakeLock' in navigator) WL = await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (!document.hidden && QRT) manterTela(); });
+async function mostrarQR(ctx) {
+  pararQR();
+  const el = document.getElementById('pm');
+  el.innerHTML = '<div class="box qrtela"><h3>Preparando o QR Code…</h3><div class="spin" style="margin:18px auto"></div></div>'; el.style.display = 'grid';
+  const pedir = () => apiGet(Object.assign({ f: 'qr', ev: ctx.ev }, ctx.a ? { a: ctx.a } : { t: ctx.t }));
+  let s, off = 0, ult = -1;
+  try { await carregarScript(LIB_QR, () => window.qrcode); const t0 = Date.now(); s = await pedir(); off = s.agora - (t0 + Date.now()) / 2; }
+  catch (e) { el.innerHTML = `<div class="box"><h3>QR Code</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts"><button class="btn pri" onclick="fecharQR()">Fechar</button></div></div>`; return; }
+  el.innerHTML = `<div class="box qrtela"><div style="display:flex;align-items:center;gap:8px"><b style="flex:1;font-size:18px">${esc(s.evento.nome)}</b><button class="btn" onclick="fecharQR()">✕</button></div>
+    <div class="muted" style="font-size:12px;margin-top:4px">${s.qr ? 'O técnico toca em Check-in (ou Check-out) e aponta a câmera para cá.' : '⚠ Este evento ainda não exige QR Code. O código funciona, mas não é obrigatório: ative em Local do check-in.'}</div>
+    <div class="qrbox" id="qrImg"></div><div class="qrcod" id="qrCod">--- ---</div><div class="qrbar"><i id="qrBar"></i></div>
+    <div class="muted" style="font-size:11px;text-align:center">Muda a cada ${s.janela} segundos · print e foto não funcionam</div><div id="qrPres"></div></div>`;
+  const pres = p => {
+    const box = document.getElementById('qrPres'); if (!box || !p) return;
+    const lin = (x, fora) => `<div class="prow"><div class="g"><b>${esc(x.nome)}</b><span class="muted" style="font-size:12px">${esc(x.role || '')}${fora ? ' · fora da escala' : ''}</span></div>
+      <span style="font-size:12px;font-weight:700;white-space:nowrap;color:${x.in ? (x.out ? 'var(--muted)' : 'var(--ok)') : 'var(--amber)'}">${x.in ? (x.out ? 'saiu ' + esc(String(x.out).slice(-5)) : 'entrou ' + esc(String(x.in).slice(-5))) : 'sem check-in'}</span></div>`;
+    box.innerHTML = `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Presença hoje · ${p.dentro} em serviço</div>
+      ${p.escalados.map(x => lin(x, false)).join('')}${p.extras.map(x => lin(x, true)).join('')}${p.escalados.length || p.extras.length ? '' : '<div class="muted" style="font-size:13px">Ninguém na escala de hoje.</div>'}`;
+  };
+  const tick = async () => {
+    const bar = document.getElementById('qrBar'); if (!bar) return pararQR();
+    const agora = Date.now() + off, w = Math.floor(agora / 1000 / s.janela), resta = s.janela - (agora / 1000) % s.janela;
+    bar.style.width = (resta / s.janela * 100) + '%';
+    if (w !== ult) {
+      ult = w; const c = await codigoQR(s.semente, w);
+      document.getElementById('qrCod').textContent = c.slice(0, 3) + ' ' + c.slice(3);
+      document.getElementById('qrImg').innerHTML = svgQR(s.link + (s.link.indexOf('?') >= 0 ? '&' : '?') + 'qr=' + c);
+    }
+  };
+  pres(s.presenca); tick();
+  QRT = { t: setInterval(tick, 1000), p: setInterval(async () => { try { const t0 = Date.now(), n = await pedir(); off = n.agora - (t0 + Date.now()) / 2; pres(n.presenca); } catch (e) {} }, 20000) };
+  manterTela();
 }
 
 /** Abre o formulário de check-in ou check-out. o = { acao, sub, evento, role, pedirNome, id, depois } */
@@ -235,26 +431,39 @@ function abrirPonto(o) {
   const opt = () => '<option value="">Selecione…</option>' + ALIM.map(a => `<option>${esc(a)}</option>`).join('');
   const el = document.getElementById('pm');
   el.innerHTML = `<div class="box"><h3>${o.acao === 'checkin' ? '✅ Check-in (entrada)' : '🏁 Check-out (saída)'}</h3><div class="muted" style="font-size:13px">${esc(o.sub || '')}</div>
-    ${o.pedirNome ? `<label>Seu nome completo<input id="pNome" value="${esc(lsGet('ponto_nome') || '')}" autocomplete="name" placeholder="Ex.: JOÃO DA SILVA"></label>` : ''}
-    <label>Horário<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>
+    ${o.passe ? '<div class="qrok" style="margin:12px 0 0">▣ QR Code conferido</div>' : ''}
+    ${o.acao === 'checkout' && o.abertos && o.abertos.length ? `<label>Seu check-in<select id="pAb"><option value="">Selecione seu nome…</option>${o.abertos.map(a => `<option value="${esc(a.id)}" ${a.id === o.id ? 'selected' : ''}>${esc(a.nome)} · entrada ${esc(a.in)}</option>`).join('')}<option value="__outro">Meu nome não está na lista</option></select></label>` : ''}
+    ${o.pedirNome ? `<label id="pNomeL" ${o.acao === 'checkout' && o.abertos && o.abertos.length ? 'style="display:none"' : ''}>Seu nome completo<input id="pNome" value="${esc(lsGet('ponto_nome') || '')}" autocomplete="name" placeholder="Ex.: JOÃO DA SILVA"></label>` : ''}
+    ${o.acao === 'checkin' ? `<label>Sua função<input id="pRole" list="dlFun" value="${esc(o.role || lsGet('ponto_funcao') || '')}" placeholder="Ex.: LED, PPT, VMIX, APOIO" autocapitalize="characters"></label>
+      <datalist id="dlFun">${['PPT', 'RESOLUME', 'VMIX', 'APOIO', 'CÂMERA', 'LED', 'TV E APOIO', 'COORDENAÇÃO', 'TÉCNICO DE LUZ', 'TÉCNICO DE SOM', 'MONTADOR'].map(x => `<option value="${x}">`).join('')}</datalist>` : ''}
+    ${o.passe ? '<div class="muted" style="font-size:12px;margin-top:12px">🕒 Horário: registrado automaticamente (agora).</div>' : `<label>Horário<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>`}
     ${o.acao === 'checkout' ? `<label>Almoço<select id="pAlm">${opt()}</select></label><label>Janta<select id="pJan">${opt()}</select></label>` : ''}
     <label>Observações<textarea id="pObs" rows="2" placeholder="Opcional"></textarea></label>
     <div class="muted" style="font-size:12px;margin-top:10px">📍 Sua localização atual será enviada junto${o.exigir ? ' <b>(obrigatória neste evento)</b>' : ''}. Permita o acesso quando o celular pedir.</div>
     <div id="pMsg"></div>
     <div class="acts" id="pActs"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="pGo">Confirmar</button></div></div>`;
   el.style.display = 'grid';
+  const ab = document.getElementById('pAb');
+  if (ab) ab.onchange = () => { document.getElementById('pNomeL').style.display = ab.value === '__outro' ? '' : 'none'; };
   document.getElementById('pGo').onclick = async () => {
     const msg = document.getElementById('pMsg'), go = document.getElementById('pGo');
-    const body = { acao: o.acao, evento: o.evento, role: o.role || '', id: o.id || '', hora: document.getElementById('pHora').value, obs: document.getElementById('pObs').value };
+    const hr = document.getElementById('pHora'), rl = document.getElementById('pRole');
+    const body = { acao: o.acao, evento: o.evento, role: rl ? rl.value.trim().toUpperCase() : (o.role || ''), id: o.id || '', hora: hr ? hr.value : '', obs: document.getElementById('pObs').value, passe: o.passe || '' };
     if (EV) body.e = EV; else body.t = TOKEN;
-    if (o.pedirNome) { body.nome = document.getElementById('pNome').value.trim(); if (body.nome.length < 3) { msg.innerHTML = '<div class="msg-err">Digite seu nome completo.</div>'; return; } lsSet('ponto_nome', body.nome); }
+    if (o.acao === 'checkin' && !body.role) { msg.innerHTML = '<div class="msg-err">Informe a sua função (ex.: LED, PPT, VMIX, APOIO).</div>'; return; }
+    if (rl) lsSet('ponto_funcao', body.role);
+    if (ab && ab.value && ab.value !== '__outro') { body.id = ab.value; body.nome = (o.abertos.find(a => a.id === ab.value) || {}).nome || ''; }
+    else if (ab && !ab.value) { msg.innerHTML = '<div class="msg-err">Selecione o seu nome na lista.</div>'; return; }
+    else if (o.pedirNome) { body.nome = document.getElementById('pNome').value.trim(); if (body.nome.length < 3) { msg.innerHTML = '<div class="msg-err">Digite seu nome completo.</div>'; return; } lsSet('ponto_nome', body.nome); }
     if (o.acao === 'checkout') {
       body.almoco = document.getElementById('pAlm').value; body.janta = document.getElementById('pJan').value;
       if (!body.almoco || !body.janta) { msg.innerHTML = '<div class="msg-err">Informe como foi o almoço e a janta.</div>'; return; }
     }
-    go.disabled = true; go.textContent = '📍 Pegando localização…';
-    body.loc = await pegarLocal();
-    if (!body.loc && o.exigir) { msg.innerHTML = '<div class="msg-err">Não consegui sua localização. Ative o GPS/localização do celular, permita o acesso para este site e tente de novo.</div>'; go.disabled = false; go.textContent = 'Confirmar'; return; }
+    go.disabled = true; go.textContent = '📍 Pegando localização…'; msg.innerHTML = '';
+    // sem exigência: tenta rápido e segue mesmo sem GPS; com exigência: espera mais e explica o que fazer
+    const L = await pegarLocal(o.exigir ? 20000 : 8000);
+    body.loc = L.loc || null;
+    if (!body.loc && o.exigir) { msg.innerHTML = `<div class="msg-err">${esc(L.erro)}</div>`; go.disabled = false; go.textContent = 'Tentar de novo'; return; }
     go.textContent = 'Enviando…';
     try {
       const r = await apiPost(body);
@@ -267,7 +476,8 @@ function abrirPonto(o) {
       document.getElementById('pActs').innerHTML = '<button class="btn pri" onclick="closeP()">OK</button>';
       if (o.depois) o.depois();
     } catch (e) {
-      msg.innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; go.disabled = false; go.textContent = 'Confirmar';
+      const dica = body.loc && body.loc.acc > 300 && /m do local/.test(e.message || '') ? (IOS ? ' Sua localização veio imprecisa (±' + body.loc.acc + ' m): ligue "Localização Precisa" em Ajustes → Privacidade e Segurança → Serviços de Localização → Sites do Safari.' : ' Sua localização veio imprecisa (±' + body.loc.acc + ' m): ligue o GPS em alta precisão.') : '';
+      msg.innerHTML = `<div class="msg-err">⚠ ${esc((e.message || e) + dica)}</div>`; go.disabled = false; go.textContent = 'Tentar de novo';
     }
   };
 }
@@ -280,14 +490,18 @@ function pontoCardHtml() {
   const abertoKeys = p.abertos.map(a => a.key);
   const rows = [];
   window.PA = [];
-  const act = o => { window.PA.push(o); return `abrirPonto(window.PA[${window.PA.length - 1}])`; };
+  const act = o => { window.PA.push(o); return `iniciarPonto(window.PA[${window.PA.length - 1}])`; };
   p.abertos.forEach(a => rows.push(`<div class="prow"><div class="g"><b>${esc(a.evento)}</b><span class="muted" style="font-size:12px">Entrada ${esc(a.in)} · em andamento</span></div>
-    <button class="btn out" onclick="${act({ acao: 'checkout', sub: a.evento, evento: a.key, id: a.id, exigir: p.cfg.exigirLocal || !!(p.eventosHoje.find(x => x.key === a.key) || {}).exigir, depois: loadPonto })}">Check-out</button></div>`));
+    <button class="btn out" onclick="${act({ acao: 'checkout', sub: a.evento, evento: a.key, id: a.id, qr: !!a.qr, exigir: p.cfg.exigirLocal || !!a.exigir || !!(p.eventosHoje.find(x => x.key === a.key) || {}).exigir, depois: loadPonto })}">${a.qr ? '▣ ' : ''}Check-out</button></div>`));
   p.eventosHoje.filter(e => !abertoKeys.includes(e.key)).forEach(e => rows.push(`<div class="prow"><div class="g"><b>${esc(e.evento)}</b><span class="muted" style="font-size:12px">${esc(e.role)}${e.local ? ' · ' + esc(e.local) : ''}</span></div>
-    <button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, exigir: !!e.exigir, depois: loadPonto })}">Check-in</button></div>`));
+    <button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, qr: !!e.qr, exigir: !!e.exigir, depois: loadPonto })}">${e.qr ? '▣ ' : ''}Check-in</button></div>`));
   const rec = p.recentes.slice(0, 3).map(r => `<div class="prow"><div class="g"><b>${esc(r.evento)}</b><span class="muted" style="font-size:12px">${esc(r.in)} → ${esc(r.out)}</span></div>
     <div style="text-align:right;font-size:12px"><b>${r.calc ? r.calc.diarias + ' diária' + (r.calc.diarias > 1 ? 's' : '') : ''}</b><span class="muted">${r.calc ? fmtH(r.calc.horas) + (r.calc.extra ? ' · HE ' + fmtH(r.calc.extra) : '') : ''}</span></div></div>`).join('');
-  return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}
+  window.PQ = p.coordena || [];
+  const coord = window.PQ.map((c, i) => `<div class="prow"><div class="g"><b>▣ ${esc(c.nome)}</b><span class="muted" style="font-size:12px">Você é o responsável · mostre o QR Code para a equipe</span></div>
+    <button class="btn pri" onclick="mostrarQR({ t: TOKEN, ev: window.PQ[${i}].key })">Mostrar QR Code</button></div>`).join('');
+  const scanOutro = !p.abertos.length ? `<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="${act({ acao: 'checkin', qr: true, evento: '', sub: '', role: '', exigir: false, depois: loadPonto })}">📷 Check-in com QR Code (outro evento)</button>` : '';
+  return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
     ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}</div>`;
 }
 async function loadPonto() {
@@ -296,25 +510,44 @@ async function loadPonto() {
 }
 
 /* ----- página do link do evento (freelancers) ----- */
+const QR_URL = new URLSearchParams(location.search).get('qr') || '';
+let PASSE_EV = null;   // QR conferido neste celular (vale 15 min)
 async function initEvento() {
   const app = document.getElementById('app');
   let d;
   try { d = await apiGet({ f: 'ponto', e: EV }); }
   catch (e) { app.innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; document.getElementById('load').style.display = 'none'; return; }
+  const recarregar = async () => { try { d = await apiGet({ f: 'ponto', e: EV }); } catch (e) { /* mantém */ } draw(); };
   const ev = d.evento; document.title = 'Check-in · ' + ev.nome;
+  // aberto pela câmera do celular (link do QR com &qr=): confere na hora e guarda o passe
+  if (QR_URL) {
+    try { history.replaceState(null, '', location.pathname + '?e=' + encodeURIComponent(EV)); } catch (e) {}
+    document.getElementById('load').style.display = 'none';
+    const r = await validarQR({ qr: QR_URL, e: EV }, null, 'QR Code');
+    if (r) PASSE_EV = { passe: r.passe, ate: Date.now() + (r.minutos || 15) * 60000 };
+  }
+  const passeOk = () => PASSE_EV && PASSE_EV.ate > Date.now() + 20000 ? PASSE_EV.passe : '';
+  const ponto = async acao => {
+    const o = { acao, sub: ev.nome, pedirNome: true, exigir: !!d.exigir, qr: !!d.qr, depois: recarregar };
+    if (acao === 'checkout') { o.id = lsGet('ponto_open_' + EV) || ''; o.abertos = d.abertos || []; }
+    if (d.qr && passeOk()) { o.passe = passeOk(); o.qr = false; }
+    await iniciarPonto(o);
+    if (o.passe && (!PASSE_EV || PASSE_EV.passe !== o.passe)) PASSE_EV = { passe: o.passe, ate: Date.now() + 14 * 60000 };
+  };
   const per = ev.start + (ev.end && ev.end !== ev.start ? ' a ' + ev.end : '');
   const draw = () => {
     const aberto = lsGet('ponto_open_' + EV), hist = JSON.parse(lsGet('ponto_hist') || '[]').filter(h => h.ev === ev.nome);
     app.innerHTML = `
     <header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
     ${faixaTema()}
+    ${passeOk() ? '<div class="qrok">▣ QR Code conferido. Agora toque em Check-in ou Check-out.</div>' : ''}
     <div class="card"><div style="font-size:14px;margin-bottom:12px">${aberto ? 'Você está com <b>check-in aberto</b> neste evento. Ao sair, faça o check-out.' : 'Registre sua <b>entrada</b> ao chegar e a <b>saída</b> ao terminar.'}</div>
       <div style="display:flex;gap:8px"><button class="btn pri big" id="bIn">✅ Check-in</button><button class="btn out big" id="bOut">🏁 Check-out</button></div>
-      <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}</div></div>
+      <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}${d.qr ? ' · ▣ Escaneie o QR Code na tela do responsável.' : ''}</div></div>
     ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · HE ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
     <div class="foot">Os registros vão direto para a coordenação.</div>`;
-    document.getElementById('bIn').onclick = () => abrirPonto({ acao: 'checkin', sub: ev.nome, pedirNome: true, exigir: !!d.exigir, depois: draw });
-    document.getElementById('bOut').onclick = () => abrirPonto({ acao: 'checkout', sub: ev.nome, pedirNome: true, exigir: !!d.exigir, id: lsGet('ponto_open_' + EV) || '', depois: draw });
+    document.getElementById('bIn').onclick = () => ponto('checkin');
+    document.getElementById('bOut').onclick = () => ponto('checkout');
   };
   draw();
   document.getElementById('load').style.display = 'none';
@@ -352,6 +585,7 @@ function admEditar(r) {
   el.innerHTML = `<div class="box"><h3>${novo ? '➕ Lançar registro' : '✎ Editar registro'}</h3>
     ${novo ? `<label>Evento<select id="aEv">${D.eventos.map(e => `<option value="${esc(e.key)}" ${e.key === AD.ev ? 'selected' : ''}>${esc(e.nome)} · ${esc(e.start)}</option>`).join('')}</select></label>` : `<div class="muted" style="font-size:13px">${esc(r.evento)}</div>`}
     <label>Nome<input id="aNome" value="${esc(r.nome || '')}"></label>
+    <label>Função<input id="aRole" value="${esc(r.role || '')}" placeholder="Ex.: LED, PPT, VMIX"></label>
     <label>Entrada<input id="aIn" type="datetime-local" value="${esc(r.inIso || '')}"></label>
     <label>Saída<input id="aOut" type="datetime-local" value="${esc(r.outIso || '')}"></label>
     <label>Almoço<select id="aAlm">${opt(r.almoco)}</select></label>
@@ -362,7 +596,7 @@ function admEditar(r) {
   el.style.display = 'grid';
   document.getElementById('aGo').onclick = async () => {
     const v = id => document.getElementById(id).value;
-    const body = { acao: novo ? 'adm_novo' : 'adm_editar', id: r.id, evento: novo ? v('aEv') : r.key, nome: v('aNome'), inIso: v('aIn'), outIso: v('aOut'), almoco: v('aAlm'), janta: v('aJan'), obs: v('aObs') };
+    const body = { acao: novo ? 'adm_novo' : 'adm_editar', id: r.id, evento: novo ? v('aEv') : r.key, nome: v('aNome'), role: v('aRole'), inIso: v('aIn'), outIso: v('aOut'), almoco: v('aAlm'), janta: v('aJan'), obs: v('aObs') };
     try { const res = await admPost(body); closeP(); avisar('✅ ' + res.msg); await admCarregar(); admDraw(); }
     catch (e) { document.getElementById('aMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
   };
@@ -409,9 +643,11 @@ function admDraw() {
   } else if (AD.tab === 'links') {
     window.AL = D.eventos;
     body = `<div class="card"><div class="muted" style="font-size:13px">Mande o link no grupo do evento. Qualquer pessoa (freelancer ou fixo) faz check-in e check-out com o nome.</div>
-      ${D.eventos.filter(e => e.endIso >= D.hoje).map((e, i0) => { const i = D.eventos.indexOf(e); return `<div class="prow" style="flex-wrap:wrap"><div class="g"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.os)}</span>
-          <span style="font-size:11px;${e.cfgExigir ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgExigir ? '📍 exige localização' : '📍 localização opcional'}${e.cfgEndereco ? ' · ' + esc(e.cfgEndereco) + ' (' + e.cfgRaio + ' m)' : ''}</span></div>
-        <button class="btn" onclick="admEvLocal(window.AL[${i}])">📍 Local</button>
+      ${D.eventos.filter(e => e.endIso >= D.hoje).map((e, i0) => { const i = D.eventos.indexOf(e); return `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.os)}</span>
+          <span style="font-size:11px;${e.cfgExigir ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgExigir ? '📍 exige localização' : '📍 localização opcional'}${e.cfgEndereco ? ' · ' + esc(e.cfgEndereco) + ' (' + e.cfgRaio + ' m)' : ''}</span>
+          <span style="font-size:11px;${e.cfgQR ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgQR ? '▣ QR Code de ' + esc(e.cfgResp) : '▣ sem QR Code'}</span></div>
+        <button class="btn" onclick="admEvLocal(window.AL[${i}])">📍 Local / QR</button>
+        <button class="btn" onclick="mostrarQR({ a: ADM, ev: window.AL[${i}].key })">▣ QR</button>
         <button class="btn" onclick="copiar(window.AL[${i}].link)">Copiar</button>
         <button class="btn pri" onclick="window.open('https://wa.me/?text='+encodeURIComponent('*Check-in / check-out · '+window.AL[${i}].nome+'*\\nFaça seu check-in ao chegar e o check-out ao sair:\\n'+window.AL[${i}].link),'_blank')">WhatsApp</button></div>`; }).join('') || '<div class="muted">Nenhum evento em andamento ou futuro.</div>'}</div>`;
   } else if (AD.tab === 'escala') {
@@ -474,12 +710,17 @@ function admEvLocal(e) {
     <label>Raio permitido (metros)<input id="vRaio" type="number" value="${e.cfgRaio || 50}"></label>
     <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vEx" type="checkbox" style="width:auto;margin:0" ${e.cfgExigir ? 'checked' : ''}> Exigir localização neste evento</label>
     <div class="muted" style="font-size:12px;margin-top:8px">Com a opção marcada, o check-in e o check-out só são aceitos com o GPS da pessoa dentro do raio. Sem endereço próprio, vale o local cadastrado em “Regra e locais”.</div>
+    <label>Responsável pelo QR Code<input id="vResp" list="dlEq" value="${esc(e.cfgResp || '')}" placeholder="Nome de quem mostra o QR no evento" autocapitalize="characters"></label>
+    <datalist id="dlEq">${(AD.d.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+    <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vQr" type="checkbox" style="width:auto;margin:0" ${e.cfgQR ? 'checked' : ''}> Exigir QR Code do responsável (check-in e check-out)</label>
+    <div class="muted" style="font-size:12px;margin-top:8px">O responsável abre o próprio link de agenda e toca em “Mostrar QR Code”. O código muda a cada 30 s e o horário passa a ser o do servidor.</div>
     <div id="vMsg"></div>
     <div class="acts"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="vGo">Salvar</button></div></div>`;
   el.style.display = 'grid';
   document.getElementById('vGo').onclick = async () => {
     const m = document.getElementById('vMsg'); m.innerHTML = '<div class="muted" style="margin-top:8px">Procurando o endereço no mapa…</div>';
-    try { await admPost({ acao: 'adm_evento_local', key: e.key, endereco: document.getElementById('vEnd').value, raio: document.getElementById('vRaio').value, exigir: document.getElementById('vEx').checked });
+    try { await admPost({ acao: 'adm_evento_local', key: e.key, endereco: document.getElementById('vEnd').value, raio: document.getElementById('vRaio').value, exigir: document.getElementById('vEx').checked,
+        responsavel: document.getElementById('vResp').value, qr: document.getElementById('vQr').checked });
       closeP(); avisar('✅ Local do evento salvo.'); await admCarregar(); admDraw(); }
     catch (err) { m.innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
   };

@@ -590,11 +590,17 @@ async function loadEvLocal(row) {
       <div class="field"><label>Raio (metros)</label><input class="ctl" id="elRaio" type="number" value="${c.raio}"></div>
       <div class="field"><label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)"><input type="checkbox" id="elEx" ${c.exigir ? 'checked' : ''}> Exigir localização neste evento</label></div>
     </div>
+    <div class="f3" style="align-items:end;margin-top:10px">
+      <div class="field"><label>Responsável pelo QR Code</label><input class="ctl" id="elResp" list="dlTeamQR" value="${esc(c.responsavel || '')}" placeholder="Quem mostra o QR Code no evento" autocomplete="off">
+        <datalist id="dlTeamQR">${S.data.team.map(m => `<option value="${esc(m.name)}">`).join('')}</datalist></div>
+      <div class="field"><label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)"><input type="checkbox" id="elQr" ${c.qr ? 'checked' : ''}> Exigir QR Code do responsável</label></div>
+      <div class="dim" style="font-size:11px">O responsável abre o link individual dele (Agenda individual) e toca em “Mostrar QR Code”. Check-in e check-out só com o código, que muda a cada 30 s.</div>
+    </div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap"><button class="btn pri" id="elGo">Salvar local</button>
-      <span class="dim" style="font-size:12px">${c.lat ? '✅ Coordenada encontrada · ' + mapa : (c.localPadrao ? 'Sem endereço próprio: usa o local “' + esc(c.localPadrao.nome) + '” da aba LOCAIS.' : 'Sem endereço: o GPS é guardado, mas a distância não é conferida.')}${c.global ? ' · A regra geral já exige localização em todos os eventos.' : ''}</span></div>`;
+      <span class="dim" style="font-size:12px">${c.qr ? '▣ QR Code: ' + esc(c.responsavel) + ' · ' : ''}${c.lat ? '✅ Coordenada encontrada · ' + mapa : (c.localPadrao ? 'Sem endereço próprio: usa o local “' + esc(c.localPadrao.nome) + '” da aba LOCAIS.' : 'Sem endereço: o GPS é guardado, mas a distância não é conferida.')}${c.global ? ' · A regra geral já exige localização em todos os eventos.' : ''}</span></div>`;
   $('#elGo').onclick = async () => {
-    const r = await run('salvarEventoCfg', [{ sheet: S.sheet, row, endereco: $('#elEnd').value, raio: $('#elRaio').value, exigir: $('#elEx').checked }]);
-    toast(r.exigir ? '✅ Local salvo. Check-in deste evento só dentro do raio.' : '✅ Local salvo.'); loadEvLocal(row);
+    const r = await run('salvarEventoCfg', [{ sheet: S.sheet, row, endereco: $('#elEnd').value, raio: $('#elRaio').value, exigir: $('#elEx').checked, responsavel: $('#elResp').value, qr: $('#elQr').checked }]);
+    toast((r.exigir ? '✅ Local salvo. Check-in deste evento só dentro do raio.' : '✅ Local salvo.') + (r.qr ? ' ▣ QR Code de ' + esc(r.responsavel) + ' obrigatório.' : '')); loadEvLocal(row);
   };
 }
 function goSheet(row, col) {
