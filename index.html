@@ -407,7 +407,9 @@ async function mostrarQR(ctx) {
     <div class="muted" style="font-size:12px;margin-top:4px">${s.qr ? 'O técnico toca em Check-in (ou Check-out) e aponta a câmera para cá.' : '⚠ Este evento ainda não exige QR Code. O código funciona, mas não é obrigatório: ative em Local do check-in.'}</div>
     <div class="qrbox" id="qrImg"></div><div class="qrcod" id="qrCod">--- ---</div><div class="qrbar"><i id="qrBar"></i></div>
     <div class="muted" style="font-size:11px;text-align:center">Muda a cada ${s.janela} segundos · print e foto não funcionam</div>
-    <button class="btn" id="qrConf" style="width:100%;justify-content:center;margin-top:12px">⏱ Conferir horários</button><div id="qrPres"></div></div>`;
+    <button class="btn" id="qrConf" style="width:100%;justify-content:center;margin-top:12px">⏱ Conferir horários</button><div id="qrAl"></div><div id="qrPres"></div></div>`;
+  const al = l => { const b = document.getElementById('qrAl'); if (b) b.innerHTML = alertasHtml(l); alerta12h(l, 'qr' + ctx.ev); };
+  al(s.alertas);
   const conf = n => { alertaNovo(n, 'qr' + ctx.ev); const b = document.getElementById('qrConf'); if (b) b.innerHTML = '⏱ Conferir horários' + (n ? ` <span class="nb">${n}</span>` : ''); };
   document.getElementById('qrConf').onclick = () => { pararQR(); abrirConferir(Object.assign({}, ctx, { nome: s.evento.nome, voltar: () => mostrarQR(ctx) })); };
   conf(s.pendentes);
@@ -429,13 +431,26 @@ async function mostrarQR(ctx) {
     }
   };
   pres(s.presenca); tick();
-  QRT = { t: setInterval(tick, 1000), p: setInterval(async () => { try { const t0 = Date.now(), n = await pedir(); off = n.agora - (t0 + Date.now()) / 2; pres(n.presenca); conf(n.pendentes); } catch (e) {} }, 20000) };
+  QRT = { t: setInterval(tick, 1000), p: setInterval(async () => { try { const t0 = Date.now(), n = await pedir(); off = n.agora - (t0 + Date.now()) / 2; pres(n.presenca); conf(n.pendentes); al(n.alertas); } catch (e) {} }, 20000) };
   manterTela();
 }
 
 /* ----- conferência do horário: responsável confirma ou pede correção ----- */
 const avisarHtml = l => (l && l.length) ? `<div class="muted" style="font-size:12px;margin-top:10px">Avise o responsável para ele confirmar:</div>` +
   l.map(x => `<a class="btn pri" style="text-decoration:none;width:100%;justify-content:center;margin-top:6px" href="${esc(x.wa)}" target="_blank" rel="noopener">📲 Avisar ${esc(x.nome)} no WhatsApp</a>`).join('') : '';
+/** Aviso de 12 h: falta 1 h para completar a diária (ou a hora extra já está correndo). */
+const alertasHtml = l => !(l && l.length) ? '' : `<div style="margin-top:12px;border:1px solid var(--amber);background:rgba(245,184,61,.12);border-radius:12px;padding:10px 12px">
+  <b style="color:var(--amber)">⏰ Falta 1h para completar ${l[0].base}h de serviço</b>
+  <div style="font-size:12px;margin:4px 0 6px">Caso precise avançar o horário, avise o cliente sobre os custos extras.</div>
+  ${l.map(x => `<div class="prow" style="padding:6px 0"><div class="g"><b>${esc(x.nome)}</b><span class="muted" style="font-size:12px">${esc(x.role || '')} · entrada ${esc(x.in)}</span></div>
+    <span style="font-size:12px;font-weight:700;white-space:nowrap;color:${x.passou ? 'var(--red)' : 'var(--amber)'}">${x.passou ? '⚠ passou de ' + x.base + 'h (hora extra)' : (x.faltaMin >= 60 ? '1h' : x.faltaMin + ' min') + ' · ' + x.base + 'h às ' + esc(String(x.completa).slice(-5))}</span></div>`).join('')}</div>`;
+function alerta12h(l, chave) {
+  const n = (l || []).length, ant = window['__A12' + chave]; window['__A12' + chave] = n;
+  if (!(n > (ant || 0))) return;
+  try { navigator.vibrate && navigator.vibrate([400, 150, 400]); } catch (e) {}
+  try { const A = new (window.AudioContext || window.webkitAudioContext)(), o = A.createOscillator(), g = A.createGain(); o.frequency.value = 660; o.connect(g); g.connect(A.destination); g.gain.value = .18; o.start(); setTimeout(() => { o.stop(); A.close(); }, 600); } catch (e) {}
+  avisar('⏰ ' + l[0].nome + ': falta 1h para completar ' + l[0].base + 'h. Avise o cliente se precisar avançar.');
+}
 /** Toca, vibra e avisa quando chega horário novo para confirmar (tela do responsável). */
 function alertaNovo(n, chave) {
   const ant = window['__ALN' + chave]; window['__ALN' + chave] = n;
@@ -611,7 +626,8 @@ function pontoCardHtml() {
   window.PQ = p.coordena || [];
   const coord = window.PQ.map((c, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g"><b>▣ ${esc(c.nome)}</b><span class="muted" style="font-size:12px">Você é o responsável · mostre o QR Code para a equipe</span></div>
     <button class="btn pri" onclick="mostrarQR({ t: TOKEN, ev: window.PQ[${i}].key })">Mostrar QR Code</button>
-    <button class="btn" onclick="abrirConferir({ t: TOKEN, ev: window.PQ[${i}].key, depois: loadPonto })">⏱ Conferir${c.pendentes ? ` <span class="nb">${c.pendentes}</span>` : ''}</button></div>`).join('');
+    <button class="btn" onclick="abrirConferir({ t: TOKEN, ev: window.PQ[${i}].key, depois: loadPonto })">⏱ Conferir${c.pendentes ? ` <span class="nb">${c.pendentes}</span>` : ''}</button>
+    ${c.alertas && c.alertas.length ? `<div style="flex-basis:100%">${alertasHtml(c.alertas)}</div>` : ''}</div>`).join('');
   const scanOutro = !p.abertos.length ? `<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="${act({ acao: 'checkin', qr: true, evento: '', sub: '', role: '', exigir: false, depois: loadPonto })}">📷 Check-in com QR Code (outro evento)</button>` : '';
   return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${corr}${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
     ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}</div>`;
@@ -619,6 +635,7 @@ function pontoCardHtml() {
 async function loadPonto() {
   try { S.ponto = await apiGet({ f: 'ponto', t: TOKEN }); } catch (e) { S.ponto = { erro: e.message || String(e) }; }
   const el = document.getElementById('ponto'); if (el) el.innerHTML = pontoCardHtml();
+  if (S.ponto && S.ponto.coordena) alerta12h([].concat(...S.ponto.coordena.map(c => c.alertas || [])), 'ag');
 }
 
 /* ----- página do link do evento (freelancers) ----- */
@@ -763,6 +780,7 @@ function admDraw() {
           <span style="font-size:11px;${e.cfgExigir ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgExigir ? '📍 exige localização' : '📍 localização opcional'}${e.cfgEndereco ? ' · ' + esc(e.cfgEndereco) + ' (' + e.cfgRaio + ' m)' : ''}</span>
           <span style="font-size:11px;${e.cfgQR ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgQR ? '▣ QR Code' : '▣ sem QR Code'}${e.resps.length ? ' · responsável: ' + esc(e.resps.map(r => r.nome).join(', ')) : ''}${e.cfgMotorista ? ' · 🚐 motorista' : ''}</span>
           ${e.cfgQR && e.regra ? `<span style="font-size:11px;color:var(--dim)">⚙ ${esc(e.regra.txt)}</span>` : ''}
+          ${alertasHtml(e.alertas)}
           ${e.pendentes ? `<span style="font-size:11px;color:var(--amber)">⏳ ${e.pendentes} horário(s) aguardando conferência</span>` : ''}</div>
         <button class="btn" onclick="admEvLocal(window.AL[${i}])">📍 Local / QR</button>
         <button class="btn" onclick="mostrarQR({ a: ADM, ev: window.AL[${i}].key })">▣ QR</button>
@@ -910,20 +928,21 @@ async function initCoord() {
         <button class="btn pri big" style="width:100%;justify-content:center;margin-top:12px" onclick="mostrarQR({ c: COORD, ev: window.CE[${i}].key })">▣ Mostrar QR Code</button>
         <button class="btn big" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirConferir({ c: COORD, ev: window.CE[${i}].key, depois: window.COORD_RELOAD })">⏱ Conferir horários${ag ? ` <span class="nb">${ag}</span>` : ''}</button>
         <div class="muted" style="font-size:12px;margin-top:6px">⚙ ${esc(e.regra ? e.regra.txt : '')} · mude em “Conferir horários”.</div>
+        ${alertasHtml(e.alertas)}
         ${ped ? `<div class="muted" style="font-size:12px;margin-top:6px">↩ ${ped} correção(ões) pedida(s): aguardando a pessoa mandar o horário certo.</div>` : ''}
         <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="flex:1;justify-content:center" onclick="coordPonto(${i},'checkin')">✅ Meu check-in</button><button class="btn out" style="flex:1;justify-content:center" onclick="coordPonto(${i},'checkout')">🏁 Meu check-out</button></div></div>`; }).join('') || '<div class="card muted">Nenhum evento seu hoje.</div>'}
       ${prox.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Próximos eventos</h3>${prox.map(e => `<div class="prow"><div class="g"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''}${e.local ? ' · ' + esc(e.local) : ''}</span></div></div>`).join('')}<div class="muted" style="font-size:12px;margin-top:6px">O QR Code de cada evento aparece aqui a partir da véspera.</div></div>` : ''}
       ${instalavel() ? '<button class="btn" style="width:100%;justify-content:center" onclick="instalarAgenda()">📲 Salvar na tela inicial</button>' : ''}
       <div class="foot">Este link é só seu: não compartilhe. Ele para de funcionar quando a administração tirar você do evento.</div>`;
   };
-  window.COORD_RELOAD = async () => { try { await carregar(); } catch (e) { /* mantém */ } if (D) { draw(); alertaNovo(D.eventos.reduce((n, e) => n + e.conferir.filter(x => x.sit === SIT_AG).length, 0), 'coord'); } };
+  window.COORD_RELOAD = async () => { try { await carregar(); } catch (e) { /* mantém */ } if (D) { draw(); alertaNovo(D.eventos.reduce((n, e) => n + e.conferir.filter(x => x.sit === SIT_AG).length, 0), 'coord'); alerta12h([].concat(...D.eventos.map(e => e.alertas || [])), 'coord'); } };
   window.coordPonto = (i, acao) => {
     const e = D.eventos[i];
     const o = { acao, sub: e.nome, evento: e.key, e: e.e, passe: e.passe, coord: true, pedirNome: true, nome: D.nome, exigir: e.exigir, depois: window.COORD_RELOAD };
     if (acao === 'checkout') { o.abertos = e.abertos; o.id = lsGet('ponto_open_' + e.key) || ''; }
     abrirPonto(o);
   };
-  try { await carregar(); draw(); alertaNovo(D.eventos.reduce((n, e) => n + e.conferir.filter(x => x.sit === SIT_AG).length, 0), 'coord'); }
+  try { await carregar(); draw(); alertaNovo(D.eventos.reduce((n, e) => n + e.conferir.filter(x => x.sit === SIT_AG).length, 0), 'coord'); alerta12h([].concat(...D.eventos.map(e => e.alertas || [])), 'coord'); }
   catch (err) { app.innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; }
   document.getElementById('load').style.display = 'none';
   // mantém a lista e o passe do próprio ponto em dia (sem atrapalhar o QR ou um formulário aberto)
@@ -1064,6 +1083,8 @@ if (ADM) {
   refresh(true);
   loadPonto();
   setInterval(() => { if (!document.hidden) refresh(); }, 60000);
+  // responsável pelo link da agenda: atualiza o ponto a cada minuto para os avisos (12 h, horários para confirmar)
+  setInterval(() => { if (!document.hidden && S.ponto && S.ponto.coordena && S.ponto.coordena.length && document.getElementById('pm').style.display !== 'grid') loadPonto(); }, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); loadPonto(); } });
 }
 </script>
