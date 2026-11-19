@@ -457,13 +457,13 @@ async function abrirConferir(ctx) {
   window.CF = d.itens;
   el.innerHTML = `<div class="box"><h3>⏱ Conferir horários</h3><div class="muted" style="font-size:13px">${esc(d.evento.nome)}</div>
     <div class="muted" style="font-size:12px;margin-top:6px">Horários enviados pela equipe depois de escanear o QR Code. Se estiver certo, confirme. Se estiver errado, peça a correção: a pessoa recebe o aviso no app para mandar o horário certo. As horas só contam depois de confirmadas.</div>
-    ${d.itens.filter(c => c.sit === SIT_AG).length > 1 ? `<button class="btn pri" style="width:100%;justify-content:center;margin-top:10px" onclick="confTodos()">✔ Confirmar todos (${d.itens.filter(c => c.sit === SIT_AG).length})</button>` : ''}
+    ${d.itens.filter(c => c.sit === SIT_AG && !c.proprio).length > 1 ? `<button class="btn pri" style="width:100%;justify-content:center;margin-top:10px" onclick="confTodos()">✔ Confirmar todos (${d.itens.filter(c => c.sit === SIT_AG && !c.proprio).length})</button>` : ''}
     <div id="cfLista">${d.itens.map((c, i) => `<div class="prow" style="flex-wrap:wrap;align-items:flex-start;margin-top:10px">
-      <div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${c.tipo === 'SAÍDA' ? 'Check-out' : 'Check-in'}${c.role ? ' · ' + esc(c.role) : ''}</span>
-        <span style="font-size:13px">Informou <b>${esc(c.inf)}</b> · QR lido ${esc(c.qr)} <span style="color:var(--amber)">(${difTxt(c.dif)})</span></span>
+      <div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${c.motorista ? '🚐 Check-in motorista' : c.tipo === 'SAÍDA' ? 'Check-out' : 'Check-in'}${c.role ? ' · ' + esc(c.role) : ''}</span>
+        <span style="font-size:13px">${c.motorista ? `Saiu dirigindo <b>${esc(c.inf)}</b> · enviado ${esc(c.qr)}` : `Informou <b>${esc(c.inf)}</b> · QR lido ${esc(c.qr)} <span style="color:var(--amber)">(${difTxt(c.dif)})</span>`}</span>
         ${c.sit === SIT_PED ? '<span style="font-size:12px;color:var(--amber)">↩ Correção pedida: aguardando a pessoa mandar o horário certo.</span>' : ''}</div>
-      <button class="btn pri" onclick="confAcao(${i},'confirmar')">✔ Confirmar</button>
-      ${c.sit === SIT_AG ? `<button class="btn" onclick="confAcao(${i},'pedir')">↩ Pedir correção</button>` : ''}
+      ${c.proprio ? '<span class="muted" style="font-size:12px">Seu horário: quem confirma é a administração do ponto.</span>' : `<button class="btn pri" onclick="confAcao(${i},'confirmar')">✔ Confirmar</button>`}
+      ${c.sit === SIT_AG && !c.proprio ? `<button class="btn" onclick="confAcao(${i},'pedir')">↩ Pedir correção</button>` : ''}
       ${ctx.a ? `<button class="btn" onclick="confCorrigir(${i})">✎ Corrigir</button>` : ''}
       ${c.wa && c.sit === SIT_PED ? `<a class="btn" style="text-decoration:none;color:inherit" href="${esc(c.wa)}" target="_blank" rel="noopener">📲 Avisar no WhatsApp</a>` : ''}
       <div id="cfE${i}" style="flex-basis:100%"></div></div>`).join('') || '<div class="qrok" style="margin-top:14px">✅ Nenhum horário para conferir.</div>'}</div>
@@ -491,9 +491,9 @@ function confCorrigir(i) {
 /** A pessoa recebeu o pedido do responsável e manda o horário certo. ctx = { t } ou { e } */
 function corrigirHora(c, ctx, depois) {
   const el = document.getElementById('pm');
-  el.innerHTML = `<div class="box"><h3>⚠ Corrigir horário</h3><div class="muted" style="font-size:13px">${esc(c.evento)} · ${c.tipo === 'SAÍDA' ? 'check-out' : 'check-in'}${ctx.e ? ' · ' + esc(c.nome) : ''}</div>
+  el.innerHTML = `<div class="box"><h3>⚠ Corrigir horário</h3><div class="muted" style="font-size:13px">${esc(c.evento)} · ${c.motorista ? 'check-in motorista' : c.tipo === 'SAÍDA' ? 'check-out' : 'check-in'}${ctx.e ? ' · ' + esc(c.nome) : ''}</div>
     <div class="msg-err" style="margin-top:12px">${esc(window.MSG_CORR || '')}</div>
-    <div class="muted" style="font-size:12px;margin-top:10px">Horário informado: <b>${esc(c.inf)}</b> · QR Code lido às <b>${esc(c.qr)}</b></div>
+    <div class="muted" style="font-size:12px;margin-top:10px">Horário informado: <b>${esc(c.inf)}</b> · ${c.motorista ? 'enviado' : 'QR Code lido'} às <b>${esc(c.qr)}</b></div>
     <label>Horário correto<input id="cHora" type="datetime-local" value="${esc(c.infIso)}"></label><div id="cMsg"></div>
     <div class="acts" id="cActs"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="cGo">Enviar horário</button></div></div>`;
   el.style.display = 'grid';
@@ -509,20 +509,22 @@ function corrigirHora(c, ctx, depois) {
 }
 const corrHtml = (lista, ctxTxt, depoisTxt, comNome) => (window.PC = lista || []).map((c, i) => `<div class="prow" style="border:1px solid var(--red);border-radius:12px;padding:10px;margin-bottom:8px">
   <div class="g"><b>⚠ ${esc(comNome ? c.nome : c.evento)}</b><span style="font-size:12px;color:var(--red)">${esc(window.MSG_CORR || '')}</span>
-  <span class="muted" style="font-size:12px">${c.tipo === 'SAÍDA' ? 'Check-out' : 'Check-in'} informado: ${esc(c.inf)}</span></div>
+  <span class="muted" style="font-size:12px">${c.motorista ? '🚐 Check-in motorista' : c.tipo === 'SAÍDA' ? 'Check-out' : 'Check-in'} informado: ${esc(c.inf)}</span></div>
   <button class="btn pri" onclick="corrigirHora(window.PC[${i}], ${ctxTxt}, ${depoisTxt})">Corrigir</button></div>`).join('');
 
 /** Abre o formulário de check-in ou check-out. o = { acao, sub, evento, role, pedirNome, id, depois } */
 function abrirPonto(o) {
   const opt = () => '<option value="">Selecione…</option>' + ALIM.map(a => `<option>${esc(a)}</option>`).join('');
   const el = document.getElementById('pm');
-  el.innerHTML = `<div class="box"><h3>${o.acao === 'checkin' ? '✅ Check-in (entrada)' : '🏁 Check-out (saída)'}</h3><div class="muted" style="font-size:13px">${esc(o.sub || '')}</div>
+  el.innerHTML = `<div class="box"><h3>${o.motorista ? '🚐 Check-in motorista' : o.acao === 'checkin' ? '✅ Check-in (entrada)' : '🏁 Check-out (saída)'}</h3><div class="muted" style="font-size:13px">${esc(o.sub || '')}</div>
     ${o.passe && !o.coord ? '<div class="qrok" style="margin:12px 0 0">▣ QR Code conferido</div>' : ''}
     ${o.acao === 'checkout' && o.abertos && o.abertos.length ? `<label>Seu check-in<select id="pAb"><option value="">Selecione seu nome…</option>${o.abertos.map(a => `<option value="${esc(a.id)}" ${a.id === o.id ? 'selected' : ''}>${esc(a.nome)} · entrada ${esc(a.in)}</option>`).join('')}<option value="__outro">Meu nome não está na lista</option></select></label>` : ''}
     ${o.pedirNome ? `<label id="pNomeL" ${o.acao === 'checkout' && o.abertos && o.abertos.length ? 'style="display:none"' : ''}>Seu nome completo<input id="pNome" value="${esc(o.nome || lsGet('ponto_nome') || '')}" autocomplete="name" placeholder="Ex.: JOÃO DA SILVA"></label>` : ''}
     ${o.acao === 'checkin' ? `<label>Sua função<input id="pRole" list="dlFun" value="${esc(o.role || lsGet('ponto_funcao') || '')}" placeholder="Ex.: LED, PPT, VMIX, APOIO" autocapitalize="characters"></label>
       <datalist id="dlFun">${['PPT', 'RESOLUME', 'VMIX', 'APOIO', 'CÂMERA', 'LED', 'TV E APOIO', 'COORDENAÇÃO', 'TÉCNICO DE LUZ', 'TÉCNICO DE SOM', 'MONTADOR'].map(x => `<option value="${x}">`).join('')}</datalist>` : ''}
-    <label>Horário${o.passe ? ' em que você ' + (o.acao === 'checkin' ? 'chegou' : 'saiu') : ''}<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>
+    ${o.motorista ? '<div class="qrok" style="margin:12px 0 0;background:rgba(245,184,61,.15);color:var(--amber)">Use quando você estiver dirigindo a trabalho, levando a equipe. Não precisa de QR Code.</div>' : ''}
+    <label>${o.motorista ? 'Horário em que você saiu dirigindo' : 'Horário' + (o.passe ? ' em que você ' + (o.acao === 'checkin' ? 'chegou' : 'saiu') : '')}<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>
+    ${o.motorista ? '<div class="muted" style="font-size:12px;margin-top:6px">O horário vai para o responsável do evento confirmar. Depois de confirmado, suas horas contam a partir dele. No local, você não precisa fazer outro check-in.</div>' : ''}
     ${o.passe && !o.coord ? '<div class="muted" style="font-size:12px;margin-top:6px">Confira o horário antes de enviar. Ele vai para o responsável do evento confirmar, e as horas só contam depois da confirmação.</div>' : ''}
     ${o.acao === 'checkout' ? `<label>Almoço<select id="pAlm">${opt()}</select></label><label>Janta<select id="pJan">${opt()}</select></label>` : ''}
     <label>Observações<textarea id="pObs" rows="2" placeholder="Opcional"></textarea></label>
@@ -535,7 +537,7 @@ function abrirPonto(o) {
   document.getElementById('pGo').onclick = async () => {
     const msg = document.getElementById('pMsg'), go = document.getElementById('pGo');
     const hr = document.getElementById('pHora'), rl = document.getElementById('pRole');
-    const body = { acao: o.acao, evento: o.evento, role: rl ? rl.value.trim().toUpperCase() : (o.role || ''), id: o.id || '', hora: hr ? hr.value : '', obs: document.getElementById('pObs').value, passe: o.passe || '' };
+    const body = { acao: o.acao, motorista: !!o.motorista, evento: o.evento, role: rl ? rl.value.trim().toUpperCase() : (o.role || ''), id: o.id || '', hora: hr ? hr.value : '', obs: document.getElementById('pObs').value, passe: o.passe || '' };
     if (o.e) body.e = o.e; else if (EV) body.e = EV; else body.t = TOKEN;
     if (o.acao === 'checkin' && !body.role) { msg.innerHTML = '<div class="msg-err">Informe a sua função (ex.: LED, PPT, VMIX, APOIO).</div>'; return; }
     if (rl) lsSet('ponto_funcao', body.role);
@@ -584,7 +586,8 @@ function pontoCardHtml() {
   p.abertos.forEach(a => rows.push(`<div class="prow"><div class="g"><b>${esc(a.evento)}</b><span class="muted" style="font-size:12px">Entrada ${esc(a.in)} · em andamento${espera(a.conf)}</span></div>
     <button class="btn out" onclick="${act({ acao: 'checkout', sub: a.evento, evento: a.key, id: a.id, qr: !!a.qr, exigir: p.cfg.exigirLocal || !!a.exigir || !!(p.eventosHoje.find(x => x.key === a.key) || {}).exigir, depois: loadPonto })}">${a.qr ? '▣ ' : ''}Check-out</button></div>`));
   p.eventosHoje.filter(e => !abertoKeys.includes(e.key)).forEach(e => rows.push(`<div class="prow"><div class="g"><b>${esc(e.evento)}</b><span class="muted" style="font-size:12px">${esc(e.role)}${e.local ? ' · ' + esc(e.local) : ''}</span></div>
-    <button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, qr: !!e.qr, exigir: !!e.exigir, depois: loadPonto })}">${e.qr ? '▣ ' : ''}Check-in</button></div>`));
+    <div style="display:flex;flex-direction:column;gap:6px"><button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, qr: !!e.qr, exigir: !!e.exigir, depois: loadPonto })}">${e.qr ? '▣ ' : ''}Check-in</button>
+    ${e.motorista ? `<button class="btn" onclick="abrirPonto(window.PA[${window.PA.push({ acao: 'checkin', motorista: true, sub: e.evento, evento: e.key, role: e.role, exigir: false, depois: loadPonto }) - 1}])">🚐 Motorista</button>` : ''}</div></div>`));
   const rec = p.recentes.slice(0, 3).map(r => `<div class="prow"><div class="g"><b>${esc(r.evento)}</b><span class="muted" style="font-size:12px">${esc(r.in)} → ${esc(r.out)}</span></div>
     <div style="text-align:right;font-size:12px"><b>${r.calc ? r.calc.diarias + ' diária' + (r.calc.diarias > 1 ? 's' : '') : ''}</b><span class="muted">${r.calc ? fmtH(r.calc.horas) + (r.calc.extra ? ' · HE ' + fmtH(r.calc.extra) : '') : (r.conf ? '⏳ em conferência' : '')}</span></div></div>`).join('');
   window.PQ = p.coordena || [];
@@ -636,10 +639,12 @@ async function initEvento() {
     ${(window.MSG_CORR = d.msgCorrecao || window.MSG_CORR, d.correcoes && d.correcoes.length) ? `<div class="card" style="border-color:var(--red)"><h3 style="margin:0 0 8px;font-size:15px">⚠ Correção de horário pedida</h3>${corrHtml(d.correcoes, '{ e: EV }', 'window.RECARREGAR_EV', true)}</div>` : ''}
     <div class="card"><div style="font-size:14px;margin-bottom:12px">${aberto ? 'Você está com <b>check-in aberto</b> neste evento. Ao sair, faça o check-out.' : 'Registre sua <b>entrada</b> ao chegar e a <b>saída</b> ao terminar.'}</div>
       <div style="display:flex;gap:8px"><button class="btn pri big" id="bIn">✅ Check-in</button><button class="btn out big" id="bOut">🏁 Check-out</button></div>
+      ${d.motorista && !aberto ? '<button class="btn big" id="bMot" style="width:100%;justify-content:center;margin-top:8px">🚐 Check-in motorista</button>' : ''}
       <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}${d.qr ? ' · ▣ Escaneie o QR Code na tela do responsável.' : ''}</div></div>
     ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · HE ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
     <div class="foot">Os registros vão direto para a coordenação.</div>`;
     document.getElementById('bIn').onclick = () => ponto('checkin');
+    const bm = document.getElementById('bMot'); if (bm) bm.onclick = () => abrirPonto({ acao: 'checkin', motorista: true, sub: ev.nome, pedirNome: true, exigir: false, depois: recarregar });
     document.getElementById('bOut').onclick = () => ponto('checkout');
   };
   draw();
@@ -738,7 +743,7 @@ function admDraw() {
     body = `<div class="card"><div class="muted" style="font-size:13px">Mande o link no grupo do evento. Qualquer pessoa (freelancer ou fixo) faz check-in e check-out com o nome.</div>
       ${D.eventos.filter(e => e.endIso >= D.hoje).map((e, i0) => { const i = D.eventos.indexOf(e); return `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.os)}</span>
           <span style="font-size:11px;${e.cfgExigir ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgExigir ? '📍 exige localização' : '📍 localização opcional'}${e.cfgEndereco ? ' · ' + esc(e.cfgEndereco) + ' (' + e.cfgRaio + ' m)' : ''}</span>
-          <span style="font-size:11px;${e.cfgQR ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgQR ? '▣ QR Code' : '▣ sem QR Code'}${e.resps.length ? ' · responsável: ' + esc(e.resps.map(r => r.nome).join(', ')) : ''}</span>
+          <span style="font-size:11px;${e.cfgQR ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgQR ? '▣ QR Code' : '▣ sem QR Code'}${e.resps.length ? ' · responsável: ' + esc(e.resps.map(r => r.nome).join(', ')) : ''}${e.cfgMotorista ? ' · 🚐 motorista' : ''}</span>
           ${e.pendentes ? `<span style="font-size:11px;color:var(--amber)">⏳ ${e.pendentes} horário(s) aguardando conferência</span>` : ''}</div>
         <button class="btn" onclick="admEvLocal(window.AL[${i}])">📍 Local / QR</button>
         <button class="btn" onclick="mostrarQR({ a: ADM, ev: window.AL[${i}].key })">▣ QR</button>
@@ -813,6 +818,8 @@ function admEvLocal(e) {
       <button class="btn pri" id="vRAdd">➕ Adicionar</button></div>
     <datalist id="dlEq">${(AD.d.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist>
     <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vQr" type="checkbox" style="width:auto;margin:0" ${e.cfgQR ? 'checked' : ''}> Exigir QR Code do responsável (check-in e check-out)</label>
+    <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vMot" type="checkbox" style="width:auto;margin:0" ${e.cfgMotorista ? 'checked' : ''}> 🚐 Permitir check-in de motorista neste evento</label>
+    <div class="muted" style="font-size:12px;margin-top:4px">Quem dirige levando a equipe faz o check-in na saída, sem QR Code e sem conferir distância. O horário vai para o responsável confirmar.</div>
     <div class="muted" style="font-size:12px;margin-top:8px">Cada responsável recebe no WhatsApp um link só dele: mostra o QR Code (muda a cada 30 s), faz o próprio ponto e confere os horários. Tirar a pessoa daqui desliga o link na hora.</div>
     <div id="vMsg"></div>
     <div class="acts"><button class="btn" onclick="closeP();admCarregar().then(admDraw)">Fechar</button><button class="btn pri" id="vGo">Salvar</button></div></div>`;
@@ -844,7 +851,7 @@ function admEvLocal(e) {
   document.getElementById('vGo').onclick = async () => {
     const m = document.getElementById('vMsg'); m.innerHTML = '<div class="muted" style="margin-top:8px">Procurando o endereço no mapa…</div>';
     try { await admPost({ acao: 'adm_evento_local', key: e.key, endereco: document.getElementById('vEnd').value, raio: document.getElementById('vRaio').value, exigir: document.getElementById('vEx').checked,
-        qr: document.getElementById('vQr').checked });
+        qr: document.getElementById('vQr').checked, motorista: document.getElementById('vMot').checked });
       closeP(); avisar('✅ Local do evento salvo.'); await admCarregar(); admDraw(); }
     catch (err) { m.innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
   };

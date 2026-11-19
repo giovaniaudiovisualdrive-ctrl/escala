@@ -602,6 +602,7 @@ async function loadEvLocal(row) {
         <div class="field"><button class="btn pri" id="elRAdd">➕ Adicionar responsável</button></div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)"><input type="checkbox" id="elQr" ${c.qr ? 'checked' : ''}> Exigir QR Code do responsável</label>
+        <label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)"><input type="checkbox" id="elMot" ${c.motorista ? 'checked' : ''}> 🚐 Permitir check-in de motorista</label>
         <span class="dim" style="font-size:11px">Cada responsável recebe no WhatsApp um link só dele: mostra o QR Code (muda a cada 30 s), faz o próprio ponto e confere os horários. Tirar a pessoa daqui desliga o link na hora.</span></div>
     </div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap"><button class="btn pri" id="elGo">Salvar local</button>
@@ -619,8 +620,8 @@ async function loadEvLocal(row) {
     toast(esc(r.msg)); loadEvLocal(rw);
   };
   $('#elGo').onclick = async () => {
-    const r = await run('salvarEventoCfg', [{ sheet: S.sheet, row, endereco: $('#elEnd').value, raio: $('#elRaio').value, exigir: $('#elEx').checked, qr: $('#elQr').checked }]);
-    toast((r.exigir ? '✅ Local salvo. Check-in deste evento só dentro do raio.' : '✅ Local salvo.') + (r.qr ? ' ▣ QR Code obrigatório.' : '')); loadEvLocal(row);
+    const r = await run('salvarEventoCfg', [{ sheet: S.sheet, row, endereco: $('#elEnd').value, raio: $('#elRaio').value, exigir: $('#elEx').checked, qr: $('#elQr').checked, motorista: $('#elMot').checked }]);
+    toast((r.exigir ? '✅ Local salvo. Check-in deste evento só dentro do raio.' : '✅ Local salvo.') + (r.qr ? ' ▣ QR Code obrigatório.' : '') + (r.motorista ? ' 🚐 Check-in de motorista ativo.' : '')); loadEvLocal(row);
   };
 }
 function goSheet(row, col) {
