@@ -590,17 +590,37 @@ async function loadEvLocal(row) {
       <div class="field"><label>Raio (metros)</label><input class="ctl" id="elRaio" type="number" value="${c.raio}"></div>
       <div class="field"><label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)"><input type="checkbox" id="elEx" ${c.exigir ? 'checked' : ''}> Exigir localização neste evento</label></div>
     </div>
-    <div class="f3" style="align-items:end;margin-top:10px">
-      <div class="field"><label>Responsável pelo QR Code</label><input class="ctl" id="elResp" list="dlTeamQR" value="${esc(c.responsavel || '')}" placeholder="Quem mostra o QR Code no evento" autocomplete="off">
-        <datalist id="dlTeamQR">${S.data.team.map(m => `<option value="${esc(m.name)}">`).join('')}</datalist></div>
-      <div class="field"><label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)"><input type="checkbox" id="elQr" ${c.qr ? 'checked' : ''}> Exigir QR Code do responsável</label></div>
-      <div class="dim" style="font-size:11px">O responsável abre o link individual dele (Agenda individual) e toca em “Mostrar QR Code”. Check-in e check-out só com o código, que muda a cada 30 s.</div>
+    <div style="margin-top:14px"><label style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700">▣ Responsáveis pelo QR Code</label>
+      <div id="elResps" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${(c.responsaveis || []).map((r, i) => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;padding:6px 10px">
+        <b style="flex:1;min-width:140px">${esc(r.nome)} <span class="dim" style="font-weight:400;font-size:12px">${r.tel ? esc(r.telFmt) : 'sem celular · usa a agenda individual'}</span></b>
+        ${r.wa ? `<a class="btn ${S.respNovo === r.tel ? 'pri' : ''}" style="text-decoration:none;${S.respNovo === r.tel ? '' : 'color:inherit'}" href="${esc(r.wa)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn" onclick="copyText(window.ELR[${i}].link)">Copiar link</button>` : ''}
+        <button class="btn" onclick="delRespEv(${row},${i})">🗑</button></div>`).join('') || '<span class="dim" style="font-size:12px">Nenhum responsável ainda.</span>'}</div>
+      <div class="f3" style="align-items:end;margin-top:8px">
+        <div class="field"><label>Nome</label><input class="ctl" id="elRN" list="dlTeamQR" placeholder="Ex.: ERIC" autocomplete="off">
+          <datalist id="dlTeamQR">${S.data.team.map(m => `<option value="${esc(m.name)}">`).join('')}</datalist></div>
+        <div class="field"><label>Celular (WhatsApp)</label><input class="ctl" id="elRT" type="tel" placeholder="(11) 99999-8888"></div>
+        <div class="field"><button class="btn pri" id="elRAdd">➕ Adicionar responsável</button></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)"><input type="checkbox" id="elQr" ${c.qr ? 'checked' : ''}> Exigir QR Code do responsável</label>
+        <span class="dim" style="font-size:11px">Cada responsável recebe no WhatsApp um link só dele: mostra o QR Code (muda a cada 30 s), faz o próprio ponto e confere os horários. Tirar a pessoa daqui desliga o link na hora.</span></div>
     </div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap"><button class="btn pri" id="elGo">Salvar local</button>
-      <span class="dim" style="font-size:12px">${c.qr ? '▣ QR Code: ' + esc(c.responsavel) + ' · ' : ''}${c.lat ? '✅ Coordenada encontrada · ' + mapa : (c.localPadrao ? 'Sem endereço próprio: usa o local “' + esc(c.localPadrao.nome) + '” da aba LOCAIS.' : 'Sem endereço: o GPS é guardado, mas a distância não é conferida.')}${c.global ? ' · A regra geral já exige localização em todos os eventos.' : ''}</span></div>`;
+      <span class="dim" style="font-size:12px">${c.qr ? '▣ QR Code obrigatório · ' : ''}${c.lat ? '✅ Coordenada encontrada · ' + mapa : (c.localPadrao ? 'Sem endereço próprio: usa o local “' + esc(c.localPadrao.nome) + '” da aba LOCAIS.' : 'Sem endereço: o GPS é guardado, mas a distância não é conferida.')}${c.global ? ' · A regra geral já exige localização em todos os eventos.' : ''}</span></div>`;
+  window.ELR = c.responsaveis || [];
+  const waTeam = {}; (c.equipeWa || []).forEach(m => { waTeam[norm(m.nome)] = m.wa; });
+  $('#elRN').onchange = e => { const t = waTeam[norm(e.target.value)]; if (t && !$('#elRT').value) $('#elRT').value = t; };
+  $('#elRAdd').onclick = async () => {
+    const r = await run('addRespEvento', [{ sheet: S.sheet, row, nome: $('#elRN').value, tel: $('#elRT').value, qr: window.ELR.length ? $('#elQr').checked : true }]);
+    S.respNovo = r.novo.tel; toast('✅ ' + esc(r.msg)); loadEvLocal(row);
+  };
+  window.delRespEv = async (rw, i) => {
+    const r0 = window.ELR[i]; if (!confirm('Tirar ' + r0.nome + ' de responsável deste evento? O link dele para de funcionar.')) return;
+    const r = await run('delRespEvento', [{ sheet: S.sheet, row: rw, tel: r0.tel, nome: r0.nome }]);
+    toast(esc(r.msg)); loadEvLocal(rw);
+  };
   $('#elGo').onclick = async () => {
-    const r = await run('salvarEventoCfg', [{ sheet: S.sheet, row, endereco: $('#elEnd').value, raio: $('#elRaio').value, exigir: $('#elEx').checked, responsavel: $('#elResp').value, qr: $('#elQr').checked }]);
-    toast((r.exigir ? '✅ Local salvo. Check-in deste evento só dentro do raio.' : '✅ Local salvo.') + (r.qr ? ' ▣ QR Code de ' + esc(r.responsavel) + ' obrigatório.' : '')); loadEvLocal(row);
+    const r = await run('salvarEventoCfg', [{ sheet: S.sheet, row, endereco: $('#elEnd').value, raio: $('#elRaio').value, exigir: $('#elEx').checked, qr: $('#elQr').checked }]);
+    toast((r.exigir ? '✅ Local salvo. Check-in deste evento só dentro do raio.' : '✅ Local salvo.') + (r.qr ? ' ▣ QR Code obrigatório.' : '')); loadEvLocal(row);
   };
 }
 function goSheet(row, col) {

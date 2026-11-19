@@ -102,6 +102,7 @@ body{background:var(--bg)}
 .qrbox svg{display:block;width:100%;height:auto}
 .qrcod{font:800 40px/1.1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;text-align:center}
 .qrbar{height:6px;border-radius:6px;background:var(--panel2);overflow:hidden;margin:6px 0}.qrbar i{display:block;height:100%;width:100%;background:var(--accent);transition:width 1s linear}
+.nb{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--amber);color:#111;font-size:12px;font-weight:800;text-align:center;margin-left:4px}
 .qrok{margin-bottom:14px;padding:10px 12px;border-radius:10px;background:rgba(31,191,117,.15);color:var(--ok);font-weight:600;font-size:13px}
 </style>
 </head>
@@ -218,7 +219,9 @@ function mv(n) { const [y, m] = S.month.split('-').map(Number); const d = new Da
 const EV = new URLSearchParams(location.search).get('e') || '';
 const ALIM = ['Local forneceu', 'Pago pelo coordenador', 'Pago por mim', 'Não teve'];
 async function apiGet(params) {
-  const r = await fetch(API + '?' + new URLSearchParams(Object.assign({}, params, { _: Date.now() })), { credentials: 'omit', cache: 'no-store' });
+  params = Object.assign({}, params);
+  if (params.c) { params.rc = params.c; delete params.c; }   // o Apps Script não aceita um parâmetro chamado "c" na URL
+  const r = await fetch(API + '?' + new URLSearchParams(Object.assign(params, { _: Date.now() })), { credentials: 'omit', cache: 'no-store' });
   const d = await r.json(); if (d.erro) throw new Error(d.erro); return d;
 }
 async function apiPost(body) {
@@ -396,14 +399,18 @@ async function mostrarQR(ctx) {
   pararQR();
   const el = document.getElementById('pm');
   el.innerHTML = '<div class="box qrtela"><h3>Preparando o QR Code…</h3><div class="spin" style="margin:18px auto"></div></div>'; el.style.display = 'grid';
-  const pedir = () => apiGet(Object.assign({ f: 'qr', ev: ctx.ev }, ctx.a ? { a: ctx.a } : { t: ctx.t }));
+  const pedir = () => apiGet(Object.assign({ f: 'qr', ev: ctx.ev }, ctx.a ? { a: ctx.a } : ctx.c ? { c: ctx.c } : { t: ctx.t }));
   let s, off = 0, ult = -1;
   try { await carregarScript(LIB_QR, () => window.qrcode); const t0 = Date.now(); s = await pedir(); off = s.agora - (t0 + Date.now()) / 2; }
   catch (e) { el.innerHTML = `<div class="box"><h3>QR Code</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts"><button class="btn pri" onclick="fecharQR()">Fechar</button></div></div>`; return; }
   el.innerHTML = `<div class="box qrtela"><div style="display:flex;align-items:center;gap:8px"><b style="flex:1;font-size:18px">${esc(s.evento.nome)}</b><button class="btn" onclick="fecharQR()">✕</button></div>
     <div class="muted" style="font-size:12px;margin-top:4px">${s.qr ? 'O técnico toca em Check-in (ou Check-out) e aponta a câmera para cá.' : '⚠ Este evento ainda não exige QR Code. O código funciona, mas não é obrigatório: ative em Local do check-in.'}</div>
     <div class="qrbox" id="qrImg"></div><div class="qrcod" id="qrCod">--- ---</div><div class="qrbar"><i id="qrBar"></i></div>
-    <div class="muted" style="font-size:11px;text-align:center">Muda a cada ${s.janela} segundos · print e foto não funcionam</div><div id="qrPres"></div></div>`;
+    <div class="muted" style="font-size:11px;text-align:center">Muda a cada ${s.janela} segundos · print e foto não funcionam</div>
+    <button class="btn" id="qrConf" style="width:100%;justify-content:center;margin-top:12px">⏱ Conferir horários</button><div id="qrPres"></div></div>`;
+  const conf = n => { const b = document.getElementById('qrConf'); if (b) b.innerHTML = '⏱ Conferir horários' + (n ? ` <span class="nb">${n}</span>` : ''); };
+  document.getElementById('qrConf').onclick = () => { pararQR(); abrirConferir(Object.assign({}, ctx, { nome: s.evento.nome, voltar: () => mostrarQR(ctx) })); };
+  conf(s.pendentes);
   const pres = p => {
     const box = document.getElementById('qrPres'); if (!box || !p) return;
     const lin = (x, fora) => `<div class="prow"><div class="g"><b>${esc(x.nome)}</b><span class="muted" style="font-size:12px">${esc(x.role || '')}${fora ? ' · fora da escala' : ''}</span></div>
@@ -422,21 +429,86 @@ async function mostrarQR(ctx) {
     }
   };
   pres(s.presenca); tick();
-  QRT = { t: setInterval(tick, 1000), p: setInterval(async () => { try { const t0 = Date.now(), n = await pedir(); off = n.agora - (t0 + Date.now()) / 2; pres(n.presenca); } catch (e) {} }, 20000) };
+  QRT = { t: setInterval(tick, 1000), p: setInterval(async () => { try { const t0 = Date.now(), n = await pedir(); off = n.agora - (t0 + Date.now()) / 2; pres(n.presenca); conf(n.pendentes); } catch (e) {} }, 20000) };
   manterTela();
 }
+
+/* ----- conferência do horário: responsável confirma, corrige ou pede correção ----- */
+const SIT_AG = 'AGUARDANDO COORDENADOR', SIT_PED = 'CORREÇÃO PEDIDA';
+const difTxt = m => { const a = Math.abs(m); return (a >= 60 ? fmtH(a / 60) : a + ' min') + (m < 0 ? ' antes' : ' depois') + ' do QR'; };
+/** ctx = { c | t | a, ev, nome, depois?, voltar? } */
+async function abrirConferir(ctx) {
+  const el = document.getElementById('pm'), auth = ctx.a ? { a: ctx.a } : ctx.c ? { c: ctx.c } : { t: ctx.t };
+  window.CFX = ctx;
+  if (el.style.display !== 'grid' || !document.getElementById('cfLista')) { el.innerHTML = '<div class="box"><h3>⏱ Conferir horários</h3><div class="spin" style="margin:18px auto"></div></div>'; el.style.display = 'grid'; }
+  let d;
+  try { d = await apiGet(Object.assign({ f: 'conferir', ev: ctx.ev }, auth)); }
+  catch (e) { el.innerHTML = `<div class="box"><h3>⏱ Conferir horários</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts"><button class="btn pri" onclick="fecharConferir()">Fechar</button></div></div>`; return; }
+  window.CF = d.itens;
+  el.innerHTML = `<div class="box"><h3>⏱ Conferir horários</h3><div class="muted" style="font-size:13px">${esc(d.evento.nome)}</div>
+    <div class="muted" style="font-size:12px;margin-top:6px">Aqui aparecem os horários informados a mais de ${d.tolerancia} min da leitura do QR Code. As horas só contam depois de conferidas.</div>
+    <div id="cfLista">${d.itens.map((c, i) => `<div class="prow" style="flex-wrap:wrap;align-items:flex-start;margin-top:10px">
+      <div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${c.tipo === 'SAÍDA' ? 'Check-out' : 'Check-in'}${c.role ? ' · ' + esc(c.role) : ''}</span>
+        <span style="font-size:13px">Informou <b>${esc(c.inf)}</b> · QR lido ${esc(c.qr)} <span style="color:var(--amber)">(${difTxt(c.dif)})</span></span>
+        ${c.sit === SIT_PED ? '<span style="font-size:12px;color:var(--amber)">↩ Correção pedida: aguardando a pessoa mandar o horário certo.</span>' : ''}</div>
+      <button class="btn pri" onclick="confAcao(${i},'confirmar')">✔ Confirmar</button>
+      <button class="btn" onclick="confCorrigir(${i})">✎ Corrigir</button>
+      ${c.sit === SIT_AG ? `<button class="btn" onclick="confAcao(${i},'pedir')">↩ Pedir correção</button>` : ''}
+      ${c.wa ? `<a class="btn" style="text-decoration:none" href="${esc(c.wa)}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
+      <div id="cfE${i}" style="flex-basis:100%"></div></div>`).join('') || '<div class="qrok" style="margin-top:14px">✅ Nenhum horário para conferir.</div>'}</div>
+    <div id="cfMsg"></div><div class="acts">${ctx.voltar ? '<button class="btn" onclick="fecharConferir(1)">▣ Voltar ao QR</button>' : ''}<button class="btn pri" onclick="fecharConferir()">Fechar</button></div></div>`;
+}
+function fecharConferir(voltar) { const c = window.CFX || {}; closeP(); if (voltar && c.voltar) c.voltar(); if (c.depois) c.depois(); }
+async function confAcao(i, decisao, hora) {
+  const c = window.CF[i], x = window.CFX, auth = x.a ? { a: x.a } : x.c ? { c: x.c } : { t: x.t };
+  try {
+    const r = await apiPost(Object.assign({ acao: 'conferir', id: c.id, tipo: c.tipo, decisao, hora: hora || '' }, auth));
+    avisar('✅ ' + r.msg);
+    if (decisao === 'pedir' && c.wa && confirm('Avisar ' + c.nome + ' pelo WhatsApp também?')) window.open(c.wa, '_blank');
+    abrirConferir(x);
+  } catch (e) { document.getElementById('cfMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+}
+function confCorrigir(i) {
+  const c = window.CF[i];
+  document.getElementById('cfE' + i).innerHTML = `<label>Horário certo do ${c.tipo === 'SAÍDA' ? 'check-out' : 'check-in'}<input id="cfH${i}" type="datetime-local" value="${esc(c.infIso)}"></label>
+    <button class="btn pri" style="margin-top:8px" onclick="confAcao(${i},'corrigir',document.getElementById('cfH${i}').value)">Salvar horário</button>`;
+}
+/** A pessoa recebeu o pedido do responsável e manda o horário certo. ctx = { t } ou { e } */
+function corrigirHora(c, ctx, depois) {
+  const el = document.getElementById('pm');
+  el.innerHTML = `<div class="box"><h3>⚠ Corrigir horário</h3><div class="muted" style="font-size:13px">${esc(c.evento)} · ${c.tipo === 'SAÍDA' ? 'check-out' : 'check-in'}${ctx.e ? ' · ' + esc(c.nome) : ''}</div>
+    <div class="msg-err" style="margin-top:12px">${esc(window.MSG_CORR || '')}</div>
+    <div class="muted" style="font-size:12px;margin-top:10px">Horário informado: <b>${esc(c.inf)}</b> · QR Code lido às <b>${esc(c.qr)}</b></div>
+    <label>Horário correto<input id="cHora" type="datetime-local" value="${esc(c.infIso)}"></label><div id="cMsg"></div>
+    <div class="acts" id="cActs"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="cGo">Enviar horário</button></div></div>`;
+  el.style.display = 'grid';
+  document.getElementById('cGo').onclick = async () => {
+    const go = document.getElementById('cGo'); go.disabled = true; go.textContent = 'Enviando…';
+    try {
+      const r = await apiPost(Object.assign({ acao: 'corrigir_hora', id: c.id, tipo: c.tipo, hora: document.getElementById('cHora').value }, ctx));
+      document.getElementById('cMsg').innerHTML = `<div class="msg-ok">${esc(r.msg)}</div>`;
+      document.getElementById('cActs').innerHTML = '<button class="btn pri" onclick="closeP()">OK</button>';
+      if (depois) depois();
+    } catch (e) { document.getElementById('cMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; go.disabled = false; go.textContent = 'Enviar horário'; }
+  };
+}
+const corrHtml = (lista, ctxTxt, depoisTxt, comNome) => (window.PC = lista || []).map((c, i) => `<div class="prow" style="border:1px solid var(--red);border-radius:12px;padding:10px;margin-bottom:8px">
+  <div class="g"><b>⚠ ${esc(comNome ? c.nome : c.evento)}</b><span style="font-size:12px;color:var(--red)">${esc(window.MSG_CORR || '')}</span>
+  <span class="muted" style="font-size:12px">${c.tipo === 'SAÍDA' ? 'Check-out' : 'Check-in'} informado: ${esc(c.inf)}</span></div>
+  <button class="btn pri" onclick="corrigirHora(window.PC[${i}], ${ctxTxt}, ${depoisTxt})">Corrigir</button></div>`).join('');
 
 /** Abre o formulário de check-in ou check-out. o = { acao, sub, evento, role, pedirNome, id, depois } */
 function abrirPonto(o) {
   const opt = () => '<option value="">Selecione…</option>' + ALIM.map(a => `<option>${esc(a)}</option>`).join('');
   const el = document.getElementById('pm');
   el.innerHTML = `<div class="box"><h3>${o.acao === 'checkin' ? '✅ Check-in (entrada)' : '🏁 Check-out (saída)'}</h3><div class="muted" style="font-size:13px">${esc(o.sub || '')}</div>
-    ${o.passe ? '<div class="qrok" style="margin:12px 0 0">▣ QR Code conferido</div>' : ''}
+    ${o.passe && !o.coord ? '<div class="qrok" style="margin:12px 0 0">▣ QR Code conferido</div>' : ''}
     ${o.acao === 'checkout' && o.abertos && o.abertos.length ? `<label>Seu check-in<select id="pAb"><option value="">Selecione seu nome…</option>${o.abertos.map(a => `<option value="${esc(a.id)}" ${a.id === o.id ? 'selected' : ''}>${esc(a.nome)} · entrada ${esc(a.in)}</option>`).join('')}<option value="__outro">Meu nome não está na lista</option></select></label>` : ''}
-    ${o.pedirNome ? `<label id="pNomeL" ${o.acao === 'checkout' && o.abertos && o.abertos.length ? 'style="display:none"' : ''}>Seu nome completo<input id="pNome" value="${esc(lsGet('ponto_nome') || '')}" autocomplete="name" placeholder="Ex.: JOÃO DA SILVA"></label>` : ''}
+    ${o.pedirNome ? `<label id="pNomeL" ${o.acao === 'checkout' && o.abertos && o.abertos.length ? 'style="display:none"' : ''}>Seu nome completo<input id="pNome" value="${esc(o.nome || lsGet('ponto_nome') || '')}" autocomplete="name" placeholder="Ex.: JOÃO DA SILVA"></label>` : ''}
     ${o.acao === 'checkin' ? `<label>Sua função<input id="pRole" list="dlFun" value="${esc(o.role || lsGet('ponto_funcao') || '')}" placeholder="Ex.: LED, PPT, VMIX, APOIO" autocapitalize="characters"></label>
       <datalist id="dlFun">${['PPT', 'RESOLUME', 'VMIX', 'APOIO', 'CÂMERA', 'LED', 'TV E APOIO', 'COORDENAÇÃO', 'TÉCNICO DE LUZ', 'TÉCNICO DE SOM', 'MONTADOR'].map(x => `<option value="${x}">`).join('')}</datalist>` : ''}
-    ${o.passe ? '<div class="muted" style="font-size:12px;margin-top:12px">🕒 Horário: registrado automaticamente (agora).</div>' : `<label>Horário<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>`}
+    <label>Horário${o.passe ? ' em que você ' + (o.acao === 'checkin' ? 'chegou' : 'saiu') : ''}<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>
+    ${o.passe ? '<div class="muted" style="font-size:12px;margin-top:6px">Esqueceu de registrar na hora? Coloque o horário certo. Se ficar a mais de 15 min de agora, o responsável do evento confere antes de contar as horas.</div>' : ''}
     ${o.acao === 'checkout' ? `<label>Almoço<select id="pAlm">${opt()}</select></label><label>Janta<select id="pJan">${opt()}</select></label>` : ''}
     <label>Observações<textarea id="pObs" rows="2" placeholder="Opcional"></textarea></label>
     <div class="muted" style="font-size:12px;margin-top:10px">📍 Sua localização atual será enviada junto${o.exigir ? ' <b>(obrigatória neste evento)</b>' : ''}. Permita o acesso quando o celular pedir.</div>
@@ -449,7 +521,7 @@ function abrirPonto(o) {
     const msg = document.getElementById('pMsg'), go = document.getElementById('pGo');
     const hr = document.getElementById('pHora'), rl = document.getElementById('pRole');
     const body = { acao: o.acao, evento: o.evento, role: rl ? rl.value.trim().toUpperCase() : (o.role || ''), id: o.id || '', hora: hr ? hr.value : '', obs: document.getElementById('pObs').value, passe: o.passe || '' };
-    if (EV) body.e = EV; else body.t = TOKEN;
+    if (o.e) body.e = o.e; else if (EV) body.e = EV; else body.t = TOKEN;
     if (o.acao === 'checkin' && !body.role) { msg.innerHTML = '<div class="msg-err">Informe a sua função (ex.: LED, PPT, VMIX, APOIO).</div>'; return; }
     if (rl) lsSet('ponto_funcao', body.role);
     if (ab && ab.value && ab.value !== '__outro') { body.id = ab.value; body.nome = (o.abertos.find(a => a.id === ab.value) || {}).nome || ''; }
@@ -491,17 +563,21 @@ function pontoCardHtml() {
   const rows = [];
   window.PA = [];
   const act = o => { window.PA.push(o); return `iniciarPonto(window.PA[${window.PA.length - 1}])`; };
-  p.abertos.forEach(a => rows.push(`<div class="prow"><div class="g"><b>${esc(a.evento)}</b><span class="muted" style="font-size:12px">Entrada ${esc(a.in)} · em andamento</span></div>
+  window.MSG_CORR = p.msgCorrecao || window.MSG_CORR;
+  const corr = corrHtml(p.correcoes, '{ t: TOKEN }', 'loadPonto', false);
+  const espera = c => c && (c.in === SIT_AG || c.out === SIT_AG) ? ' · ⏳ aguardando o responsável conferir o horário' : '';
+  p.abertos.forEach(a => rows.push(`<div class="prow"><div class="g"><b>${esc(a.evento)}</b><span class="muted" style="font-size:12px">Entrada ${esc(a.in)} · em andamento${espera(a.conf)}</span></div>
     <button class="btn out" onclick="${act({ acao: 'checkout', sub: a.evento, evento: a.key, id: a.id, qr: !!a.qr, exigir: p.cfg.exigirLocal || !!a.exigir || !!(p.eventosHoje.find(x => x.key === a.key) || {}).exigir, depois: loadPonto })}">${a.qr ? '▣ ' : ''}Check-out</button></div>`));
   p.eventosHoje.filter(e => !abertoKeys.includes(e.key)).forEach(e => rows.push(`<div class="prow"><div class="g"><b>${esc(e.evento)}</b><span class="muted" style="font-size:12px">${esc(e.role)}${e.local ? ' · ' + esc(e.local) : ''}</span></div>
     <button class="btn pri" onclick="${act({ acao: 'checkin', sub: e.evento, evento: e.key, role: e.role, qr: !!e.qr, exigir: !!e.exigir, depois: loadPonto })}">${e.qr ? '▣ ' : ''}Check-in</button></div>`));
   const rec = p.recentes.slice(0, 3).map(r => `<div class="prow"><div class="g"><b>${esc(r.evento)}</b><span class="muted" style="font-size:12px">${esc(r.in)} → ${esc(r.out)}</span></div>
-    <div style="text-align:right;font-size:12px"><b>${r.calc ? r.calc.diarias + ' diária' + (r.calc.diarias > 1 ? 's' : '') : ''}</b><span class="muted">${r.calc ? fmtH(r.calc.horas) + (r.calc.extra ? ' · HE ' + fmtH(r.calc.extra) : '') : ''}</span></div></div>`).join('');
+    <div style="text-align:right;font-size:12px"><b>${r.calc ? r.calc.diarias + ' diária' + (r.calc.diarias > 1 ? 's' : '') : ''}</b><span class="muted">${r.calc ? fmtH(r.calc.horas) + (r.calc.extra ? ' · HE ' + fmtH(r.calc.extra) : '') : (r.conf ? '⏳ em conferência' : '')}</span></div></div>`).join('');
   window.PQ = p.coordena || [];
-  const coord = window.PQ.map((c, i) => `<div class="prow"><div class="g"><b>▣ ${esc(c.nome)}</b><span class="muted" style="font-size:12px">Você é o responsável · mostre o QR Code para a equipe</span></div>
-    <button class="btn pri" onclick="mostrarQR({ t: TOKEN, ev: window.PQ[${i}].key })">Mostrar QR Code</button></div>`).join('');
+  const coord = window.PQ.map((c, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g"><b>▣ ${esc(c.nome)}</b><span class="muted" style="font-size:12px">Você é o responsável · mostre o QR Code para a equipe</span></div>
+    <button class="btn pri" onclick="mostrarQR({ t: TOKEN, ev: window.PQ[${i}].key })">Mostrar QR Code</button>
+    <button class="btn" onclick="abrirConferir({ t: TOKEN, ev: window.PQ[${i}].key, depois: loadPonto })">⏱ Conferir${c.pendentes ? ` <span class="nb">${c.pendentes}</span>` : ''}</button></div>`).join('');
   const scanOutro = !p.abertos.length ? `<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="${act({ acao: 'checkin', qr: true, evento: '', sub: '', role: '', exigir: false, depois: loadPonto })}">📷 Check-in com QR Code (outro evento)</button>` : '';
-  return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
+  return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${corr}${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
     ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}</div>`;
 }
 async function loadPonto() {
@@ -518,6 +594,7 @@ async function initEvento() {
   try { d = await apiGet({ f: 'ponto', e: EV }); }
   catch (e) { app.innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; document.getElementById('load').style.display = 'none'; return; }
   const recarregar = async () => { try { d = await apiGet({ f: 'ponto', e: EV }); } catch (e) { /* mantém */ } draw(); };
+  window.RECARREGAR_EV = recarregar;
   const ev = d.evento; document.title = 'Check-in · ' + ev.nome;
   // aberto pela câmera do celular (link do QR com &qr=): confere na hora e guarda o passe
   if (QR_URL) {
@@ -541,6 +618,7 @@ async function initEvento() {
     <header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
     ${faixaTema()}
     ${passeOk() ? '<div class="qrok">▣ QR Code conferido. Agora toque em Check-in ou Check-out.</div>' : ''}
+    ${(window.MSG_CORR = d.msgCorrecao || window.MSG_CORR, d.correcoes && d.correcoes.length) ? `<div class="card" style="border-color:var(--red)"><h3 style="margin:0 0 8px;font-size:15px">⚠ Correção de horário pedida</h3>${corrHtml(d.correcoes, '{ e: EV }', 'window.RECARREGAR_EV', true)}</div>` : ''}
     <div class="card"><div style="font-size:14px;margin-bottom:12px">${aberto ? 'Você está com <b>check-in aberto</b> neste evento. Ao sair, faça o check-out.' : 'Registre sua <b>entrada</b> ao chegar e a <b>saída</b> ao terminar.'}</div>
       <div style="display:flex;gap:8px"><button class="btn pri big" id="bIn">✅ Check-in</button><button class="btn out big" id="bOut">🏁 Check-out</button></div>
       <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}${d.qr ? ' · ▣ Escaneie o QR Code na tela do responsável.' : ''}</div></div>
@@ -624,7 +702,7 @@ function admDraw() {
   }
   if (AD.tab === 'reg') {
     const regs = admRegs(); window.AR = regs;
-    const tot = {}; regs.forEach(r => { const t = tot[r.nome] = tot[r.nome] || { n: r.nome, d: 0, h: 0, e: 0, ab: 0 }; if (r.calc) { t.d += r.calc.diarias; t.h += r.calc.horas; t.e += r.calc.extra; } else t.ab++; });
+    const tot = {}; regs.forEach(r => { const t = tot[r.nome] = tot[r.nome] || { n: r.nome, d: 0, h: 0, e: 0, ab: 0, cf: 0 }; if (r.calc) { t.d += r.calc.diarias; t.h += r.calc.horas; t.e += r.calc.extra; } else if (r.out) t.cf++; else t.ab++; });
     const evs = D.eventos.filter(e => D.registros.some(r => r.key === e.key) || e.key === AD.ev);
     body = `<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap">
         <select id="fEv" style="flex:1;min-width:200px"><option value="">Todos os eventos</option>${evs.map(e => `<option value="${esc(e.key)}" ${e.key === AD.ev ? 'selected' : ''}>${esc(e.nome)} · ${esc(e.start)}</option>`).join('')}</select>
@@ -632,22 +710,24 @@ function admDraw() {
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn pri" onclick="admEditar()">➕ Lançar registro</button><button class="btn" onclick="admCsv()">⬇ Baixar planilha (filtro atual)</button><button class="btn" onclick="admCarregar().then(admDraw)">↻ Atualizar</button></div></div>
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Totais ${AD.ev ? 'do evento' : ''} · ${regs.length} registro(s)</h3>
-        ${Object.values(tot).sort((a, b) => a.n.localeCompare(b.n)).map(t => `<div class="prow"><div class="g"><b>${esc(t.n)}</b>${t.ab ? `<span style="color:var(--amber);font-size:12px">${t.ab} em aberto</span>` : ''}</div><div style="text-align:right;font-size:12px"><b>${t.d} diária${t.d !== 1 ? 's' : ''}</b><span class="muted">${fmtH(t.h)} · HE ${fmtH(t.e)}</span></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>
+        ${Object.values(tot).sort((a, b) => a.n.localeCompare(b.n)).map(t => `<div class="prow"><div class="g"><b>${esc(t.n)}</b>${t.ab ? `<span style="color:var(--amber);font-size:12px">${t.ab} em aberto</span>` : ''}${t.cf ? `<span style="color:var(--amber);font-size:12px">${t.cf} aguardando conferência</span>` : ''}</div><div style="text-align:right;font-size:12px"><b>${t.d} diária${t.d !== 1 ? 's' : ''}</b><span class="muted">${fmtH(t.h)} · HE ${fmtH(t.e)}</span></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Registros</h3>
         ${regs.map((r, i) => `<div class="prow" style="align-items:flex-start"><div class="g"><b>${esc(r.nome)}</b><span class="muted" style="font-size:12px">${esc(r.evento)} · ${esc(r.origem || '')}</span>
           <div style="font-size:13px;margin-top:4px">${esc(r.in)} ${mapa(r.locIn)} → ${r.out ? esc(r.out) + ' ' + mapa(r.locOut) : '<b style="color:var(--amber)">sem saída</b>'}${r.dist !== '' && r.dist != null ? ` <span class="muted">(${r.dist} m do local)</span>` : ''}</div>
           ${r.calc ? `<div style="font-size:12px;margin-top:2px"><b>${r.calc.diarias} diária${r.calc.diarias > 1 ? 's' : ''}</b> · ${fmtH(r.calc.horas)} · HE ${fmtH(r.calc.extra)}</div>` : ''}
           ${r.almoco || r.janta ? `<div class="muted" style="font-size:12px">Almoço: ${esc(r.almoco || '—')} · Janta: ${esc(r.janta || '—')}</div>` : ''}
-          ${r.obs ? `<div class="muted" style="font-size:12px">${esc(r.obs)}</div>` : ''}${r.editado ? `<div class="muted" style="font-size:11px">✎ ${esc(r.editado)}</div>` : ''}</div>
+          ${r.obs ? `<div class="muted" style="font-size:12px">${esc(r.obs)}</div>` : ''}${r.editado ? `<div class="muted" style="font-size:11px;${/^[⏳⚠]/.test(r.editado) ? 'color:var(--amber)' : ''}">${/^[⏳⚠✔]/.test(r.editado) ? '' : '✎ '}${esc(r.editado)}</div>` : ''}</div>
           <div style="display:flex;flex-direction:column;gap:6px"><button class="btn" onclick="admEditar(window.AR[${i}])">✎</button><button class="btn" onclick="admExcluir(window.AR[${i}])">🗑</button></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>`;
   } else if (AD.tab === 'links') {
     window.AL = D.eventos;
     body = `<div class="card"><div class="muted" style="font-size:13px">Mande o link no grupo do evento. Qualquer pessoa (freelancer ou fixo) faz check-in e check-out com o nome.</div>
       ${D.eventos.filter(e => e.endIso >= D.hoje).map((e, i0) => { const i = D.eventos.indexOf(e); return `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.os)}</span>
           <span style="font-size:11px;${e.cfgExigir ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgExigir ? '📍 exige localização' : '📍 localização opcional'}${e.cfgEndereco ? ' · ' + esc(e.cfgEndereco) + ' (' + e.cfgRaio + ' m)' : ''}</span>
-          <span style="font-size:11px;${e.cfgQR ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgQR ? '▣ QR Code de ' + esc(e.cfgResp) : '▣ sem QR Code'}</span></div>
+          <span style="font-size:11px;${e.cfgQR ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgQR ? '▣ QR Code' : '▣ sem QR Code'}${e.resps.length ? ' · responsável: ' + esc(e.resps.map(r => r.nome).join(', ')) : ''}</span>
+          ${e.pendentes ? `<span style="font-size:11px;color:var(--amber)">⏳ ${e.pendentes} horário(s) aguardando conferência</span>` : ''}</div>
         <button class="btn" onclick="admEvLocal(window.AL[${i}])">📍 Local / QR</button>
         <button class="btn" onclick="mostrarQR({ a: ADM, ev: window.AL[${i}].key })">▣ QR</button>
+        ${e.pendentes ? `<button class="btn" onclick="abrirConferir({ a: ADM, ev: window.AL[${i}].key, depois: () => admCarregar().then(admDraw) })">⏱ ${e.pendentes}</button>` : ''}
         <button class="btn" onclick="copiar(window.AL[${i}].link)">Copiar</button>
         <button class="btn pri" onclick="window.open('https://wa.me/?text='+encodeURIComponent('*Check-in / check-out · '+window.AL[${i}].nome+'*\\nFaça seu check-in ao chegar e o check-out ao sair:\\n'+window.AL[${i}].link),'_blank')">WhatsApp</button></div>`; }).join('') || '<div class="muted">Nenhum evento em andamento ou futuro.</div>'}</div>`;
   } else if (AD.tab === 'escala') {
@@ -710,17 +790,46 @@ function admEvLocal(e) {
     <label>Raio permitido (metros)<input id="vRaio" type="number" value="${e.cfgRaio || 50}"></label>
     <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vEx" type="checkbox" style="width:auto;margin:0" ${e.cfgExigir ? 'checked' : ''}> Exigir localização neste evento</label>
     <div class="muted" style="font-size:12px;margin-top:8px">Com a opção marcada, o check-in e o check-out só são aceitos com o GPS da pessoa dentro do raio. Sem endereço próprio, vale o local cadastrado em “Regra e locais”.</div>
-    <label>Responsável pelo QR Code<input id="vResp" list="dlEq" value="${esc(e.cfgResp || '')}" placeholder="Nome de quem mostra o QR no evento" autocapitalize="characters"></label>
+    <div class="muted" style="font-size:11px;margin-top:18px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">▣ Responsáveis pelo QR Code</div>
+    <div id="vResps"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <label style="flex:1;min-width:150px">Nome<input id="vRN" list="dlEq" placeholder="Ex.: ERIC" autocapitalize="characters"></label>
+      <label style="flex:1;min-width:150px">Celular (WhatsApp)<input id="vRT" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label>
+      <button class="btn pri" id="vRAdd">➕ Adicionar</button></div>
     <datalist id="dlEq">${(AD.d.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist>
     <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vQr" type="checkbox" style="width:auto;margin:0" ${e.cfgQR ? 'checked' : ''}> Exigir QR Code do responsável (check-in e check-out)</label>
-    <div class="muted" style="font-size:12px;margin-top:8px">O responsável abre o próprio link de agenda e toca em “Mostrar QR Code”. O código muda a cada 30 s e o horário passa a ser o do servidor.</div>
+    <div class="muted" style="font-size:12px;margin-top:8px">Cada responsável recebe no WhatsApp um link só dele: mostra o QR Code (muda a cada 30 s), faz o próprio ponto e confere os horários. Tirar a pessoa daqui desliga o link na hora.</div>
     <div id="vMsg"></div>
-    <div class="acts"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="vGo">Salvar</button></div></div>`;
+    <div class="acts"><button class="btn" onclick="closeP();admCarregar().then(admDraw)">Fechar</button><button class="btn pri" id="vGo">Salvar</button></div></div>`;
   el.style.display = 'grid';
+  const resps = (list, novo) => {
+    window.VR = list;
+    document.getElementById('vResps').innerHTML = list.map((r, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(r.nome)}</b><span class="muted" style="font-size:12px">${r.tel ? esc(r.telFmt) : 'sem celular · usa o link da agenda individual'}</span></div>
+      ${r.wa ? `<a class="btn ${r.tel === novo ? 'pri' : ''}" style="text-decoration:none;color:inherit" href="${esc(r.wa)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn" onclick="copiar(window.VR[${i}].link)">Copiar link</button>` : ''}
+      <button class="btn" onclick="admRespDel(${i})">🗑</button></div>`).join('') || '<div class="muted" style="font-size:13px;margin-top:6px">Nenhum responsável ainda.</div>';
+  };
+  resps(e.resps || []);
+  const wa = {}; (AD.d.equipeWa || []).forEach(x => { wa[norm(x.nome)] = x.wa; });
+  document.getElementById('vRN').onchange = ev => { const t = wa[norm(ev.target.value)], f = document.getElementById('vRT'); if (t && !f.value) f.value = t; };
+  document.getElementById('vRAdd').onclick = async () => {
+    const m = document.getElementById('vMsg'), q = document.getElementById('vQr');
+    if (!window.VR.length) q.checked = true;   // primeiro responsável: já passa a exigir o QR
+    try {
+      const r = await admPost({ acao: 'adm_resp_add', key: e.key, nome: document.getElementById('vRN').value, tel: document.getElementById('vRT').value, qr: q.checked });
+      e.resps = r.responsaveis; resps(r.responsaveis, r.novo.tel); q.checked = r.qr;
+      document.getElementById('vRN').value = ''; document.getElementById('vRT').value = '';
+      m.innerHTML = `<div class="msg-ok">✅ ${esc(r.msg)}</div>`;
+    } catch (err) { m.innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
+  };
+  window.admRespDel = async i => {
+    const r0 = window.VR[i]; if (!confirm('Tirar ' + r0.nome + ' de responsável deste evento? O link dele para de funcionar.')) return;
+    try { const r = await admPost({ acao: 'adm_resp_del', key: e.key, tel: r0.tel, nome: r0.nome }); e.resps = r.responsaveis; resps(r.responsaveis); document.getElementById('vQr').checked = r.qr; document.getElementById('vMsg').innerHTML = `<div class="msg-ok">${esc(r.msg)}</div>`; }
+    catch (err) { document.getElementById('vMsg').innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
+  };
   document.getElementById('vGo').onclick = async () => {
     const m = document.getElementById('vMsg'); m.innerHTML = '<div class="muted" style="margin-top:8px">Procurando o endereço no mapa…</div>';
     try { await admPost({ acao: 'adm_evento_local', key: e.key, endereco: document.getElementById('vEnd').value, raio: document.getElementById('vRaio').value, exigir: document.getElementById('vEx').checked,
-        responsavel: document.getElementById('vResp').value, qr: document.getElementById('vQr').checked });
+        qr: document.getElementById('vQr').checked });
       closeP(); avisar('✅ Local do evento salvo.'); await admCarregar(); admDraw(); }
     catch (err) { m.innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
   };
@@ -741,6 +850,43 @@ async function initAdm() {
   catch (e) { document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; }
   document.getElementById('load').style.display = 'none';
   setInterval(() => { if (!document.hidden) admChatCarregar(); }, AD.tab === 'chat' ? 10000 : 20000);
+}
+
+/* ----- responsável pelo ponto (?c=, link recebido no WhatsApp) ----- */
+const COORD = new URLSearchParams(location.search).get('c') || '';
+async function initCoord() {
+  document.title = 'Responsável pelo ponto';
+  const app = document.getElementById('app');
+  let D = null;
+  const carregar = async () => { D = await apiGet({ f: 'coord', c: COORD }); };
+  const draw = () => {
+    window.CE = D.eventos;
+    const ativos = D.eventos.filter(e => e.ativo), prox = D.eventos.filter(e => !e.ativo);
+    app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>${esc(D.nome)}</h1><div class="sub">Responsável pelo ponto · ${esc(D.tel)}</div></div></header>
+      ${faixaTema()}
+      ${ativos.map(e => { const i = D.eventos.indexOf(e), ag = e.conferir.filter(x => x.sit === SIT_AG).length, ped = e.conferir.length - ag;
+        return `<div class="card"><h3 style="margin:0 0 4px">${esc(e.nome)}</h3><div class="muted" style="font-size:12px">${esc([e.os, e.local, e.start + (e.end !== e.start ? ' a ' + e.end : '')].filter(Boolean).join(' · '))}${e.qr ? ' · ▣ QR Code obrigatório' : ' · ▣ QR Code ainda não é obrigatório'}</div>
+        <button class="btn pri big" style="width:100%;justify-content:center;margin-top:12px" onclick="mostrarQR({ c: COORD, ev: window.CE[${i}].key })">▣ Mostrar QR Code</button>
+        <button class="btn big" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirConferir({ c: COORD, ev: window.CE[${i}].key, depois: window.COORD_RELOAD })">⏱ Conferir horários${ag ? ` <span class="nb">${ag}</span>` : ''}</button>
+        ${ped ? `<div class="muted" style="font-size:12px;margin-top:6px">↩ ${ped} correção(ões) pedida(s): aguardando a pessoa mandar o horário certo.</div>` : ''}
+        <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" style="flex:1;justify-content:center" onclick="coordPonto(${i},'checkin')">✅ Meu check-in</button><button class="btn out" style="flex:1;justify-content:center" onclick="coordPonto(${i},'checkout')">🏁 Meu check-out</button></div></div>`; }).join('') || '<div class="card muted">Nenhum evento seu hoje.</div>'}
+      ${prox.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Próximos eventos</h3>${prox.map(e => `<div class="prow"><div class="g"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''}${e.local ? ' · ' + esc(e.local) : ''}</span></div></div>`).join('')}<div class="muted" style="font-size:12px;margin-top:6px">O QR Code de cada evento aparece aqui a partir da véspera.</div></div>` : ''}
+      ${instalavel() ? '<button class="btn" style="width:100%;justify-content:center" onclick="instalarAgenda()">📲 Salvar na tela inicial</button>' : ''}
+      <div class="foot">Este link é só seu: não compartilhe. Ele para de funcionar quando a administração tirar você do evento.</div>`;
+  };
+  window.COORD_RELOAD = async () => { try { await carregar(); } catch (e) { /* mantém */ } if (D) draw(); };
+  window.coordPonto = (i, acao) => {
+    const e = D.eventos[i];
+    const o = { acao, sub: e.nome, evento: e.key, e: e.e, passe: e.passe, coord: true, pedirNome: true, nome: D.nome, exigir: e.exigir, depois: window.COORD_RELOAD };
+    if (acao === 'checkout') { o.abertos = e.abertos; o.id = lsGet('ponto_open_' + e.key) || ''; }
+    abrirPonto(o);
+  };
+  try { await carregar(); draw(); } catch (err) { app.innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; }
+  document.getElementById('load').style.display = 'none';
+  // mantém a lista e o passe do próprio ponto em dia (sem atrapalhar o QR ou um formulário aberto)
+  const quieto = () => !document.hidden && !QRT && document.getElementById('pm').style.display !== 'grid';
+  setInterval(() => { if (quieto()) window.COORD_RELOAD(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (quieto()) window.COORD_RELOAD(); });
 }
 
 /* ==================== INSTALAR NA TELA INICIAL ==================== */
@@ -862,6 +1008,9 @@ function iniciarChat() {
 
 if (ADM) {
   initAdm();
+} else if (COORD) {
+  aplicarTema();
+  initCoord();
 } else if (EV) {
   aplicarTema();
   initEvento();
