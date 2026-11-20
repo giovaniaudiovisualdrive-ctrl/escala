@@ -587,7 +587,7 @@ function abrirPonto(o) {
     ${o.acao === 'checkout' && o.abertos && o.abertos.length ? `<label>Seu check-in<select id="pAb"><option value="">Selecione seu nome…</option>${o.abertos.map(a => `<option value="${esc(a.id)}" ${a.id === o.id ? 'selected' : ''}>${esc(a.nome)} · entrada ${esc(a.in)}</option>`).join('')}<option value="__outro">Meu nome não está na lista</option></select></label>` : ''}
     ${o.pedirNome ? `<label id="pNomeL" ${o.acao === 'checkout' && o.abertos && o.abertos.length ? 'style="display:none"' : ''}>Seu nome completo<input id="pNome" value="${esc(o.nome || lsGet('ponto_nome') || '')}" autocomplete="name" placeholder="Ex.: JOÃO DA SILVA"></label>` : ''}
     ${o.acao === 'checkin' ? `<label>Sua função<input id="pRole" list="dlFun" value="${esc(o.role || lsGet('ponto_funcao') || '')}" placeholder="Ex.: LED, PPT, VMIX, APOIO" autocapitalize="characters"></label>
-      <datalist id="dlFun">${['PPT', 'RESOLUME', 'VMIX', 'APOIO', 'CÂMERA', 'LED', 'TV E APOIO', 'COORDENAÇÃO', 'TÉCNICO DE LUZ', 'TÉCNICO DE SOM', 'MONTADOR'].map(x => `<option value="${x}">`).join('')}</datalist>` : ''}
+      <datalist id="dlFun">${['PPT', 'RESOLUME', 'VMIX', 'APOIO', 'OPERADOR CAMERA', 'LED', 'TV E APOIO', 'SOM', 'LUZ', 'ASSISTENTE TÉCNICO', 'COORDENADOR', 'MONTADOR'].map(x => `<option value="${x}">`).join('')}</datalist>` : ''}
     ${o.motorista ? '<div class="qrok" style="margin:12px 0 0;background:rgba(245,184,61,.15);color:var(--amber)">Use quando você estiver dirigindo a trabalho, levando a equipe. Não precisa de QR Code.</div>' : ''}
     <label>${o.motorista ? 'Horário em que você saiu dirigindo' : 'Horário' + (o.passe ? ' em que você ' + (o.acao === 'checkin' ? 'chegou' : 'saiu') : '')}<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>
     ${o.motorista ? '<div class="muted" style="font-size:12px;margin-top:6px">O horário vai para o responsável do evento confirmar. Depois de confirmado, suas horas contam a partir dele. No local, você não precisa fazer outro check-in.</div>' : ''}
@@ -726,7 +726,7 @@ async function initEvento() {
 
 /* ----- administração do ponto (?a=) ----- */
 const ADM = new URLSearchParams(location.search).get('a') || '';
-const AD = { tab: 'reg', ev: '', q: '', d: null };
+const AD = { tab: ['reg', 'links', 'chat', 'escala', 'coordg', 'conv', 'regra'].includes(new URLSearchParams(location.search).get('tab')) ? new URLSearchParams(location.search).get('tab') : 'reg', ev: '', q: '', d: null };
 function copiar(t) {
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(() => avisar('📋 Copiado.'), () => prompt('Copie:', t));
   else prompt('Copie:', t);
@@ -783,7 +783,7 @@ async function admExcluir(r) {
 function admDraw() {
   const D = AD.d, app = document.getElementById('app');
   const nChat = AD.chat ? AD.chat.naoLidas : 0;
-  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '👥 Coordenadores'], ['regra', 'Regra e locais']];
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '👥 Coordenadores'], ['conv', '📣 Convocação'], ['regra', 'Regra e locais']];
   let body = '';
   if (AD.tab === 'chat') {
     const C = AD.chat || { conversas: [], msgs: [], ativo: true };
@@ -841,6 +841,8 @@ function admDraw() {
         <label>Nome<input id="cgN" list="cgL" placeholder="Ex.: ERIC" autocapitalize="characters"><datalist id="cgL">${(D.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
         <label>Celular (WhatsApp), opcional<input id="cgW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
       <div id="cgMsg"></div><button class="btn pri" style="margin-top:12px" id="cgGo">➕ Cadastrar e gerar link</button></div>`;
+  } else if (AD.tab === 'conv') {
+    body = convHtml();
   } else if (AD.tab === 'escala') {
     body = D.eventos.map(e => `<div class="card"><b>${esc(e.nome)}</b> <span class="muted" style="font-size:12px">${esc(e.os)}</span>
       <div class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.status || '')}</div>
@@ -866,7 +868,7 @@ function admDraw() {
   }
   app.style.maxWidth = '980px';
   app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Administração do ponto</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
-    <div class="tabs" style="flex-wrap:wrap">${tabs.map(([k, l]) => `<button class="btn ${AD.tab === k ? 'on' : ''}" onclick="AD.tab='${k}';admDraw()">${l}</button>`).join('')}</div>${body}
+    <div class="tabs" style="flex-wrap:wrap">${tabs.map(([k, l]) => `<button class="btn ${AD.tab === k ? 'on' : ''}" onclick="AD.tab='${k}';${k === 'conv' ? 'CVS.d=null;' : ''}admDraw()">${l}</button>`).join('')}</div>${body}
     <div class="foot">Acesso só ao ponto. Para mudar a escala, fale com a coordenação.</div>`;
   if (AD.tab === 'reg') {
     document.getElementById('fEv').onchange = e => { AD.ev = e.target.value; admDraw(); };
@@ -962,9 +964,114 @@ async function admLocalExcluir(nome) {
 async function admChatCarregar() {
   try { AD.chat = await apiGet({ f: 'chatadm', a: ADM, cv: AD.conv || '' }); } catch (e) { return; }
   const a = document.activeElement;
-  if (AD.d && !(a && a.id === 'admTxt')) admDraw();
+  if (AD.d && !(a && (a.id === 'admTxt' || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) && document.getElementById('pm').style.display !== 'grid') admDraw();
 }
 function admAbrirConv(c) { AD.conv = c; AD.txt = ''; AD.chat = Object.assign({}, AD.chat, { msgs: [] }); admDraw(); admChatCarregar(); }
+/* ----- convocação pelo WhatsApp (ADM): mensagem pronta, um a um ou fila "enviar para todos" ----- */
+const CVS = { d: null, carregando: false, erro: '', aberto: null };
+async function convCarregar() {
+  CVS.carregando = true;
+  try { CVS.d = await apiGet({ f: 'conv', a: ADM }); CVS.erro = ''; } catch (e) { CVS.erro = e.message || String(e); }
+  CVS.carregando = false;
+  if (AD.tab === 'conv') admDraw();
+}
+const cvWa = p => 'https://wa.me/' + (p.tel || '') + '?text=' + encodeURIComponent(p.msg);
+const cvDia = iso => { const d = new Date(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)); return ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][d.getDay()] + ' ' + iso.slice(8, 10) + '/' + iso.slice(5, 7); };
+function convHtml() {
+  if (!CVS.d) { if (!CVS.carregando) convCarregar(); return `<div class="card muted">${CVS.erro ? '⚠ ' + esc(CVS.erro) : 'Carregando as convocações…'}</div>`; }
+  const D = CVS.d; window.CVE = D.eventos;
+  if (!CVS.aberto) {   // abre sozinho só o que começa nos próximos 3 dias; o resto fica fechado (toque para abrir)
+    const lim = new Date(); lim.setDate(lim.getDate() + 3); const li = lim.toISOString().slice(0, 10);
+    CVS.aberto = {}; D.eventos.forEach(e => { if (e.pessoas.some(p => p.primeiro <= li && !p.passou)) CVS.aberto[e.key] = 1; });
+  }
+  const am = []; D.eventos.forEach((e, ei) => e.pessoas.forEach((p, pi) => { if (p.primeiro === D.amanha) am.push([ei, pi]); }));
+  const faltaAm = am.filter(([ei, pi]) => !D.eventos[ei].pessoas[pi].enviado).length;
+  window.CVA = am;
+  const pessoa = (e, ei, p, pi) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(p.nome)}</b>
+      <span class="muted" style="font-size:12px">${esc(p.roles.join(', '))} · ${esc(p.periodo)}${p.telFmt ? ' · ' + esc(p.telFmt) : ''}</span>
+      <span style="font-size:12px;${p.enviado ? 'color:var(--accent)' : p.passou ? 'color:var(--dim)' : 'color:var(--amber)'}">${p.enviado ? '✓ convocação enviada ' + esc(p.enviado) : p.passou ? 'dias já passaram' : '⏳ ainda não enviada'}${p.primeiro === D.amanha ? ' · <b style="display:inline">começa amanhã</b>' : ''}</span></div>
+    ${p.tel ? '' : `<input id="cvT${ei}_${pi}" type="tel" inputmode="tel" placeholder="WhatsApp (11) 99999-8888" style="flex:1;min-width:170px;padding:9px 10px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--text)"><button class="btn" onclick="convTel(${ei},${pi})">Salvar nº</button>`}
+    <button class="btn ${p.enviado ? '' : 'pri'}" onclick="convEnviar(${ei},${pi})">📲 ${p.enviado ? 'Enviar de novo' : 'Enviar'}</button>
+    <button class="btn" title="Ver mensagem" onclick="convVer(${ei},${pi})">👁</button></div>`;
+  const evCard = (e, ei) => { const falta = e.pessoas.filter(p => !p.enviado && !p.passou).length, ab = CVS.aberto[e.key]; return `<div class="card">
+    <div style="cursor:pointer" onclick="CVS.aberto[window.CVE[${ei}].key]=${ab ? 0 : 1};admDraw()"><b>${ab ? '▾' : '▸'} ${esc(e.nome)}</b> <span class="muted" style="font-size:12px">${esc(e.os || '')}</span>
+    <div class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''}${e.local ? ' · ' + esc(e.local) : ''} · ${e.pessoas.length} pessoa(s)${falta ? ` · <span style="color:var(--amber)">${falta} sem convocação</span>` : ' · <span style="color:var(--accent)">todos convocados</span>'}</div></div>
+    ${ab ? `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+      <label style="flex:3;min-width:200px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Endereço<input id="cvE${ei}" value="${esc(e.endereco)}" placeholder="Rua, número, bairro, cidade" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px"></label>
+      <label style="flex:1;min-width:110px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Entrada<input id="cvH${ei}" value="${esc(e.entrada)}" placeholder="07:00" inputmode="numeric" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px"></label>
+      <button class="btn" onclick="convCfg(${ei})">Salvar</button></div>
+    ${!e.endereco || !e.entrada ? `<div style="font-size:12px;color:var(--amber);margin-top:6px">${!e.endereco ? 'Sem endereço' : ''}${!e.endereco && !e.entrada ? ' e sem' : !e.entrada ? 'Sem' : ''}${!e.entrada ? ' horário de entrada' : ''}: a mensagem sai sem ${!e.endereco ? 'o endereço' : ''}${!e.endereco && !e.entrada ? ' e ' : ''}${!e.entrada ? '“a confirmar” no horário' : ''}.</div>` : ''}
+    <button class="btn pri" style="width:100%;justify-content:center;margin-top:12px" onclick="convFila(${ei})">▶ Enviar para todos${falta ? ` (${falta} pendente${falta > 1 ? 's' : ''})` : ' de novo'}</button>
+    ${e.pessoas.map((p, pi) => pessoa(e, ei, p, pi)).join('')}` : ''}</div>`; };
+  return `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">📣 Convocação pelo WhatsApp</h3>
+      <div class="muted" style="font-size:12px">Cada pessoa recebe os dias, a função, o local, o endereço com mapa, o horário de entrada, o link de check-in/check-out, a agenda individual e um explicativo rápido de como funciona. O WhatsApp abre com a mensagem pronta: é só tocar em enviar. Na véspera do primeiro dia de cada pessoa chega um e-mail para você com a lista de quem começa.</div></div>
+    ${am.length ? `<div class="card" style="border-color:var(--accent)"><b>🔔 Amanhã · ${esc(cvDia(D.amanha))}</b><div class="muted" style="font-size:13px;margin-top:2px">${am.length} pessoa(s) começam${faltaAm ? ` · ${faltaAm} ainda sem convocação` : ' · todas já convocadas'}</div>
+      <button class="btn pri" style="width:100%;justify-content:center;margin-top:10px" onclick="convFilaAmanha()">▶ Enviar para todos de amanhã${faltaAm ? ` (${faltaAm})` : ' de novo'}</button></div>` : ''}
+    ${D.eventos.map(evCard).join('') || '<div class="card muted">Nenhum evento com equipe escalada nos próximos 45 dias.</div>'}`;
+}
+async function convMarcar(e, nomes, tipo) {
+  try { const r = await admPost({ acao: 'adm_conv_marcar', key: e.key, nomes, tipo }); e.pessoas.forEach(p => { if (nomes.includes(p.nome)) p.enviado = r.enviado; }); }
+  catch (err) { avisar('⚠ ' + (err.message || err)); }
+}
+function convEnviar(ei, pi) {
+  const e = CVS.d.eventos[ei], p = e.pessoas[pi];
+  window.open(cvWa(p), '_blank');
+  convMarcar(e, [p.nome], 'um').then(() => { if (AD.tab === 'conv' && document.getElementById('pm').style.display !== 'grid') admDraw(); });
+}
+function convVer(ei, pi) {
+  const e = CVS.d.eventos[ei], p = e.pessoas[pi], el = document.getElementById('pm');
+  window.CVM = p.msg;
+  el.innerHTML = `<div class="box"><h3>Mensagem · ${esc(p.nome)}</h3><div class="muted" style="font-size:12px">${esc(e.nome)}</div>
+    <textarea readonly rows="16" style="width:100%;box-sizing:border-box;margin-top:10px;font-size:13px;line-height:1.4">${esc(p.msg)}</textarea>
+    <div class="acts"><button class="btn" onclick="closeP()">Fechar</button><button class="btn" onclick="copiar(window.CVM)">Copiar</button><button class="btn pri" onclick="closeP();convEnviar(${ei},${pi})">📲 Enviar</button></div></div>`;
+  el.style.display = 'grid';
+}
+/* fila: o navegador só abre o WhatsApp com um toque, então cada pessoa é um toque (abre, envia, volta, próximo) */
+function convAbrirFila(itens, titulo) {
+  if (!itens.length) { avisar('Ninguém para enviar.'); return; }
+  const F = { i: 0, itens, enviados: 0 };
+  const el = document.getElementById('pm');
+  const draw = () => {
+    if (F.i >= F.itens.length) {
+      el.innerHTML = `<div class="box"><h3>✅ Fila concluída</h3><div class="muted" style="font-size:14px">${F.enviados} convocação(ões) aberta(s) no WhatsApp.</div>
+        <div class="acts"><button class="btn pri" onclick="closeP();admDraw()">Fechar</button></div></div>`;
+      return;
+    }
+    const [ei, pi] = F.itens[F.i], e = CVS.d.eventos[ei], p = e.pessoas[pi];
+    el.innerHTML = `<div class="box"><h3>${esc(titulo)} · ${F.i + 1} de ${F.itens.length}</h3>
+      <div style="font-size:18px;font-weight:800;margin-top:6px">${esc(p.nome)}</div>
+      <div class="muted" style="font-size:13px">${esc(e.nome)} · ${esc(p.roles.join(', '))} · ${esc(p.periodo)}</div>
+      <div style="font-size:13px;margin-top:6px;${p.tel ? '' : 'color:var(--amber)'}">${p.tel ? '📱 ' + esc(p.telFmt) : '⚠ Sem WhatsApp cadastrado: o WhatsApp vai pedir para escolher o contato.'}${p.enviado ? ' · já enviada ' + esc(p.enviado) : ''}</div>
+      <div class="muted" style="font-size:12px;margin-top:10px">Toque em enviar, mande no WhatsApp e volte aqui para o próximo.</div>
+      <div class="acts" style="flex-wrap:wrap"><button class="btn" id="fStop">Parar</button><button class="btn" id="fSkip">Pular</button><button class="btn pri" id="fGo" style="flex:1;justify-content:center">📲 Enviar para ${esc(p.nome.split(' ')[0])}</button></div></div>`;
+    document.getElementById('fStop').onclick = () => { closeP(); admDraw(); };
+    document.getElementById('fSkip').onclick = () => { F.i++; draw(); };
+    document.getElementById('fGo').onclick = () => { window.open(cvWa(p), '_blank'); convMarcar(e, [p.nome], 'fila'); F.enviados++; F.i++; draw(); };
+  };
+  el.style.display = 'grid'; draw();
+}
+function convFila(ei) {
+  const e = CVS.d.eventos[ei];
+  let it = e.pessoas.map((p, pi) => [ei, pi]).filter(([, pi]) => !e.pessoas[pi].enviado && !e.pessoas[pi].passou);
+  if (!it.length) { if (!confirm('Todos já receberam. Enviar de novo para todos?')) return; it = e.pessoas.map((p, pi) => [ei, pi]).filter(([, pi]) => !e.pessoas[pi].passou); }
+  convAbrirFila(it, e.nome);
+}
+function convFilaAmanha() {
+  let it = window.CVA.filter(([ei, pi]) => !CVS.d.eventos[ei].pessoas[pi].enviado);
+  if (!it.length) { if (!confirm('Todos de amanhã já receberam. Enviar de novo?')) return; it = window.CVA.slice(); }
+  convAbrirFila(it, 'Amanhã');
+}
+async function convCfg(ei) {
+  const e = CVS.d.eventos[ei];
+  try { const r = await admPost({ acao: 'adm_conv_cfg', key: e.key, endereco: document.getElementById('cvE' + ei).value, entrada: document.getElementById('cvH' + ei).value }); avisar('✅ ' + r.msg); document.activeElement && document.activeElement.blur(); await convCarregar(); }
+  catch (err) { alert(err.message || err); }
+}
+async function convTel(ei, pi) {
+  const p = CVS.d.eventos[ei].pessoas[pi];
+  try { const r = await admPost({ acao: 'adm_conv_tel', nome: p.nome, tel: document.getElementById('cvT' + ei + '_' + pi).value }); avisar('✅ ' + r.msg); document.activeElement && document.activeElement.blur(); await convCarregar(); }
+  catch (err) { alert(err.message || err); }
+}
 async function initAdm() {
   document.title = 'Administração do ponto';
   try { await admCarregar(); admDraw(); admChatCarregar(); }
