@@ -5,6 +5,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Minha agenda</title>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -53,6 +55,17 @@ h1{margin:0;font-size:20px}.sub{color:var(--muted);font-size:12px;display:flex;a
 .foot{color:var(--dim);font-size:11px;text-align:center;margin-top:20px}
 .load{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg)}
 .spin{width:30px;height:30px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
+/* carregando: ícone do tema quicando como bola de borracha (amassa ao bater no chão) */
+.load .quica{display:flex;flex-direction:column;align-items:center;gap:0}
+.load .bola{font-size:56px;line-height:1;height:64px;transform-origin:50% 100%;animation:quica .95s infinite;will-change:transform}
+.load .bola img{width:56px;height:56px;border-radius:14px}
+.load .chao{width:54px;height:10px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.28),rgba(255,255,255,0));margin-top:-6px;animation:sombra .95s infinite}
+.load .ltxt{margin-top:18px;color:var(--muted);font-size:13px;opacity:0;transition:opacity .4s}
+@keyframes quica{0%{transform:translateY(-78px) scale(1,1);animation-timing-function:cubic-bezier(.45,0,.9,.55)}
+  46%{transform:translateY(0) scale(.94,1.06)}52%{transform:translateY(0) scale(1.32,.68);animation-timing-function:cubic-bezier(.1,.45,.55,1)}
+  60%{transform:translateY(-14px) scale(.9,1.12)}100%{transform:translateY(-78px) scale(1,1)}}
+@keyframes sombra{0%,100%{transform:scale(.45);opacity:.35}46%,58%{transform:scale(1.1);opacity:.8}}
+@media (prefers-reduced-motion:reduce){.load .bola,.load .chao{animation-duration:2.4s}}
 .flash{animation:fl 1.6s}@keyframes fl{0%{background:rgba(31,191,117,.35)}}
 /* ponto */
 .ponto h3{margin:0 0 10px;font-size:15px}
@@ -108,7 +121,7 @@ body{background:var(--bg)}
 </style>
 </head>
 <body>
-<div class="load" id="load"><div class="spin"></div></div>
+<div class="load" id="load"><div class="quica"><div class="bola" id="loadIco"><img src="icon-192.png" alt=""></div><div class="chao"></div><div class="ltxt" id="loadTxt">Conectando…</div></div></div>
 <div class="pm" id="pm"></div>
 <div class="tema-bg" id="temaBg"></div>
 <div id="chatRoot"></div>
@@ -116,6 +129,9 @@ body{background:var(--bg)}
 <script>
 // Página pública (GitHub Pages). Lê os dados da planilha pelo App da Web, sem usar conta Google.
 const API = 'https://script.google.com/macros/s/AKfycbzC4SQUnbGNWFK7xlj0xUKbmoMuGYWDN-8AExukFuHmepDC1JiEgVLS3FiH1KIrv9to/exec';
+// ícone do carregamento conforme o tema do dia (Natal, Consciência Negra, Independência…)
+try { const t0 = temaDe(new Date()); document.getElementById('loadIco').textContent = t0.load || t0.ico; } catch (e) { /* fica o logo */ }
+setTimeout(() => { const l = document.getElementById('loadTxt'); if (l) l.style.opacity = 1; }, 2500);
 const TOKEN = new URLSearchParams(location.search).get('t') || '';
 const LS_KEY = 'agenda_' + TOKEN;
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -1173,8 +1189,17 @@ async function convTel(ei, pi) {
 }
 async function initAdm() {
   document.title = 'Administração do ponto';
-  try { await admCarregar(); admDraw(); admChatCarregar(); }
-  catch (e) { document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; }
+  const ck = 'bt_cache_adm_' + ADM.slice(-8);
+  try { const c = JSON.parse(lsGet(ck) || 'null'); if (c && c.cfg) { AD.d = c; admDraw(); document.getElementById('load').style.display = 'none'; } } catch (e) { /* sem cache */ }
+  try {
+    const velho = AD.d ? JSON.stringify(AD.d) : '';
+    await admCarregar();
+    const novo = JSON.stringify(AD.d); try { localStorage.setItem(ck, novo); } catch (e) { /* cheio: ignora */ }
+    const digitando = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if (novo !== velho && !digitando) admDraw();
+    admChatCarregar();
+  }
+  catch (e) { if (!AD.d) document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; }
   document.getElementById('load').style.display = 'none';
   setInterval(() => { if (!document.hidden) admChatCarregar(); }, AD.tab === 'chat' ? 10000 : 20000);
 }
@@ -1244,8 +1269,8 @@ async function initCadastro() {
 /* ----- login com e-mail e senha (endereço do app sem nada depois) ----- */
 const SEMPARAM = !location.search || location.search === '?';
 const diaSem = iso => ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][new Date(iso + 'T12:00:00').getDay()];
-function sessaoSalvar(r) { lsSet('bt_sessao', r.s); lsSet('bt_sessao_nome', r.nome); lsSet('bt_sessao_nivel', r.nivel); lsSet('bt_sessao_ctrl', (r.destino && r.destino.controle) || ''); }
-function sair() { ['bt_sessao', 'bt_sessao_nome', 'bt_sessao_nivel', 'bt_sessao_ctrl'].forEach(k => lsSet(k, null)); location.href = location.origin + location.pathname; }
+function sessaoSalvar(r) { lsSet('bt_sessao', r.s); lsSet('bt_sessao_nome', r.nome); lsSet('bt_sessao_nivel', r.nivel); lsSet('bt_sessao_ctrl', (r.destino && r.destino.controle) || ''); lsSet('bt_sessao_app', (r.destino && r.destino.app) || ''); }
+function sair() { ['bt_sessao', 'bt_sessao_nome', 'bt_sessao_nivel', 'bt_sessao_ctrl', 'bt_sessao_app'].forEach(k => lsSet(k, null)); try { Object.keys(localStorage).filter(k => k.indexOf('bt_cache_') === 0).forEach(k => localStorage.removeItem(k)); } catch (e) {} location.href = location.origin + location.pathname; }
 function barraSessao() {
   if (!lsGet('bt_sessao') || document.getElementById('barSes')) return;
   const ctrl = lsGet('bt_sessao_ctrl');
@@ -1254,13 +1279,17 @@ function barraSessao() {
   b.innerHTML = (ctrl ? `<a class="btn" style="padding:6px 10px;font-size:12px;text-decoration:none;color:inherit" href="${esc(ctrl)}" title="Abrir o Controle (painel completo)">🖥️ Controle</a>` : '') +
     `<button class="btn" style="padding:6px 10px;font-size:12px" onclick="if(confirm('Sair deste aparelho?'))sair()" title="${esc(lsGet('bt_sessao_nome') || '')}">⎋ Sair</button>`;
   const app = document.getElementById('app'); app.parentNode.insertBefore(b, app);
+  // confere a sessão sem atrasar a tela: se foi desativada ou a senha foi zerada, volta para o login
+  apiGet({ f: 'sessao', s: lsGet('bt_sessao') }).then(d => { if (d.destino) { lsSet('bt_sessao_app', d.destino.app || ''); lsSet('bt_sessao_ctrl', d.destino.controle || ''); } })
+    .catch(e => { if (/SESSAO/.test(e.message || '')) sair(); });
 }
 async function initLogin() {
   document.title = 'Entrar · Escala Técnica';
   const app = document.getElementById('app'), load = document.getElementById('load');
   const s = lsGet('bt_sessao');
+  if (s && lsGet('bt_sessao_app')) { location.replace(lsGet('bt_sessao_app')); return; }   // abre na hora; barraSessao confere a sessão
   if (s) {
-    try { const d = await apiGet({ f: 'sessao', s }); if (d.destino && d.destino.app) { lsSet('bt_sessao_ctrl', d.destino.controle || ''); location.replace(d.destino.app); return; } }
+    try { const d = await apiGet({ f: 'sessao', s }); if (d.destino && d.destino.app) { lsSet('bt_sessao_ctrl', d.destino.controle || ''); lsSet('bt_sessao_app', d.destino.app); location.replace(d.destino.app); return; } }
     catch (e) { if (/SESSAO/.test(e.message || '')) ['bt_sessao', 'bt_sessao_nome', 'bt_sessao_nivel', 'bt_sessao_ctrl'].forEach(k => lsSet(k, null)); }
   }
   load.style.display = 'none';
@@ -1338,8 +1367,10 @@ function cgDraw() {
 }
 async function initCoordG() {
   document.title = 'Coordenação';
-  try { CG.d = await apiGet({ f: 'coordg', k: COORDG }); cgDraw(); }
-  catch (err) { document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; }
+  const ck = 'bt_cache_cg_' + COORDG.slice(-8);
+  try { const c = JSON.parse(lsGet(ck) || 'null'); if (c && c.modo) { CG.d = c; cgDraw(); document.getElementById('load').style.display = 'none'; } } catch (e) { /* sem cache */ }
+  try { const d = await apiGet({ f: 'coordg', k: COORDG }); const novo = JSON.stringify(d); if (!CG.d || novo !== JSON.stringify(CG.d)) { CG.d = d; cgDraw(); } lsSet(ck, novo); }
+  catch (err) { if (!CG.d) document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; }
   document.getElementById('load').style.display = 'none';
   setInterval(async () => { if (document.hidden || document.activeElement && document.activeElement.id === 'cgQ') return; try { CG.d = await apiGet({ f: 'coordg', k: COORDG }); cgDraw(); } catch (e) {} }, 120000);
 }
@@ -1405,6 +1436,9 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 /* ==================== TEMA DO MÊS ==================== */
 function temaDe(d) {
   const m = d.getMonth() + 1, dia = d.getDate();
+  if (m === 4 && dia >= 12 && dia <= 20) return { cor: '#2b8a3e', ico: '🪶', txt: '19 de abril: Dia dos Povos Indígenas. Respeito às culturas originárias.', chuva: ['🪶', '🌿', '🏹'] };
+  if (m === 6 && dia >= 24) return { cor: '#e64980', ico: '🏳️‍🌈', txt: '28 de junho: Dia do Orgulho LGBTQIA+. Respeito e diversidade na equipe.', chuva: ['🏳️‍🌈', '💖', '✨'] };
+  if (m === 9 && dia <= 7) return { cor: '#2f9e44', ico: '🇧🇷', txt: '7 de setembro: Dia da Independência do Brasil.', chuva: ['🇧🇷', '💚', '💛'] };
   if (m === 1 && dia <= 10) return { cor: '#f5c542', ico: '🎆', txt: 'Feliz Ano Novo! Que venham grandes eventos.', chuva: ['✨', '🎉', '🥂'] };
   if (m === 1) return { cor: '#ffb703', ico: '☀️', txt: 'Janeiro de verão: hidrate-se nas montagens!', chuva: ['☀️', '🌊'] };
   if (m === 2) return { cor: '#c13cff', ico: '🎭', txt: 'Fevereiro de Carnaval: bom trabalho e boa folia!', chuva: ['🎉', '🎊', '🎭'] };
@@ -1420,7 +1454,7 @@ function temaDe(d) {
   if (m === 11 && dia >= 13 && dia <= 21) return { cor: '#e9b949', ico: '✊🏾', txt: '20 de novembro: Dia da Consciência Negra.', chuva: ['✊🏾', '🌍'] };
   if (m === 11) return { cor: '#339af0', ico: '🎗️', txt: 'Novembro Azul: saúde do homem. Faça seus exames!', chuva: ['💙', '🎗️'] };
   if (m === 12 && dia >= 26) return { cor: '#f5c542', ico: '🎆', txt: 'Fim de ano! Obrigado pela temporada, equipe.', chuva: ['✨', '🎆', '🥂'] };
-  return { cor: '#2f9e44', ico: '🎄', txt: 'Feliz Natal, equipe base técnica!', chuva: ['❄️', '🎄', '⭐'] };
+  return { cor: '#2f9e44', ico: '🎄', load: '🎅', txt: 'Feliz Natal, equipe base técnica!', chuva: ['❄️', '🎄', '⭐'] };
 }
 const icoMes = (y, m) => temaDe(new Date(y, m - 1, 5)).ico;
 function faixaTema() { const t = temaDe(new Date()); return `<div class="tema-faixa"><span class="ico">${t.ico}</span><span>${esc(t.txt)}</span></div>`; }
