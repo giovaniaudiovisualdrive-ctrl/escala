@@ -216,6 +216,7 @@ function render(changed) {
   ${faixaTema()}
   ${instalavel() ? `<button class="btn" style="width:100%;justify-content:center;margin-bottom:14px" onclick="instalarAgenda()">📲 Instalar na tela inicial do celular</button>` : ''}
   <div id="ponto">${pontoCardHtml()}</div>
+  <div id="cacheCard">${cacheCardHtml()}</div>
   ${next ? `<div class="card next ${changed ? 'flash' : ''}"><div class="l">${next.from <= t ? 'Agora' : 'Próximo trabalho'}</div><h2>${esc(next.evento)}</h2>
     <div class="muted">${f(next.from)} (${dow(next.from)})${next.from !== next.to ? ' até ' + f(next.to) : ''} · ${esc(next.role)}${next.local ? ' · ' + esc(next.local) : ''}</div>
     <div class="chips">${next.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div>` : `<div class="card"><b>Nenhum trabalho futuro marcado.</b></div>`}
@@ -700,6 +701,37 @@ function abrirPonto(o) {
   };
 }
 
+/* ----- funções e cachês da pessoa (agenda individual) ----- */
+function cacheCardHtml() {
+  const c = S.cache;
+  if (!c) return '';
+  return `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">💼 Minhas funções e valores</h3>
+    ${c.funcoes.length ? c.funcoes.map(f => `<div class="prow"><div class="g"><b style="font-size:14px">${esc(f.funcao)}</b></div><b>${esc(f.valorFmt)}</b></div>`).join('') : '<div class="muted" style="font-size:13px">Nenhuma função com valor cadastrada ainda.</div>'}
+    ${c.refeicao ? `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--panel2);font-size:13px">🍽️ ${esc(c.refeicao.txt)}</div>` : ''}
+    <button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="abrirAddFuncao()">➕ Adicionar função com valor combinado</button></div>`;
+}
+async function loadCache() {
+  try { const c = JSON.parse(lsGet('cache_' + TOKEN) || 'null'); if (c && !S.cache) { S.cache = c; const el = document.getElementById('cacheCard'); if (el) el.innerHTML = cacheCardHtml(); } } catch (e) {}
+  try { S.cache = await apiGet({ f: 'cache', t: TOKEN }); lsSet('cache_' + TOKEN, JSON.stringify(S.cache)); } catch (e) { return; }
+  const el = document.getElementById('cacheCard'); if (el) el.innerHTML = cacheCardHtml();
+}
+function abrirAddFuncao() {
+  const c = S.cache || { opcoes: [] }, el = document.getElementById('pm');
+  el.innerHTML = `<div class="box"><h3>➕ Adicionar função</h3><div class="muted" style="font-size:13px">Escolha a função e coloque o valor da diária que foi combinado. A administração recebe um aviso.</div>
+    <label>Função<select id="afF"><option value="">Escolha…</option>${c.opcoes.filter(o => !c.funcoes.some(f => f.funcao === o)).map(o => `<option>${esc(o)}</option>`).join('')}<option value="OUTRA">OUTRA</option></select></label>
+    <label id="afOL" style="display:none">Descreva a função<input id="afO" autocapitalize="characters"></label>
+    <label>Valor combinado (R$)<input id="afV" inputmode="decimal" placeholder="Ex.: 450"></label><div id="afMsg"></div>
+    <div class="acts"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="afGo">Adicionar</button></div></div>`;
+  el.style.display = 'grid';
+  document.getElementById('afF').onchange = ev => { document.getElementById('afOL').style.display = ev.target.value === 'OUTRA' ? '' : 'none'; };
+  document.getElementById('afGo').onclick = async () => {
+    const v = id => document.getElementById(id).value, b = document.getElementById('afGo'); b.disabled = true;
+    try { const r = await apiPost({ acao: 'cache_add', t: TOKEN, funcao: v('afF'), outra: v('afO'), valor: v('afV') }); S.cache.funcoes = r.funcoes; lsSet('cache_' + TOKEN, JSON.stringify(S.cache));
+      closeP(); avisar('✅ ' + r.msg); const e2 = document.getElementById('cacheCard'); if (e2) e2.innerHTML = cacheCardHtml(); }
+    catch (e) { b.disabled = false; document.getElementById('afMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+  };
+}
+
 /* ----- ponto dentro da agenda individual ----- */
 function pontoCardHtml() {
   const p = S.ponto;
@@ -845,6 +877,18 @@ async function admQrMasterNovo() {
   try { const r = await admPost({ acao: 'adm_qrmaster_novo' }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (err) { alert(err.message || err); }
 }
 const AC = { edit: null, novo: null, convite: null };
+function cxEditar(i, j) {
+  const p = window.ACX[i], f = p.funcoes[j], sel = document.getElementById('cxF');
+  document.getElementById('cxN').value = p.nome; document.getElementById('cxV').value = String(f.valor).replace('.', ',');
+  if ([...sel.options].some(o => o.value === f.funcao)) { sel.value = f.funcao; document.getElementById('cxOL').style.display = 'none'; }
+  else { sel.value = 'OUTRA'; document.getElementById('cxOL').style.display = ''; document.getElementById('cxO').value = f.funcao.replace(/^OUTRA:\s*/, ''); }
+  document.getElementById('cxV').focus(); document.getElementById('cxV').scrollIntoView({ block: 'center' });
+}
+async function cxTirar(i, j) {
+  const p = window.ACX[i], f = p.funcoes[j];
+  if (!confirm('Tirar a função ' + f.funcao + ' de ' + p.nome + '?')) return;
+  try { const r = await admPost({ acao: 'adm_cache_del', nome: p.nome, funcao: f.funcao }); avisar(r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+}
 async function contResponder(i) {
   const c = window.ACT[i], v = id => (document.getElementById(id) || {}).value || '';
   const w = window.open('', '_blank');   // abre já (o navegador bloqueia janela aberta depois da espera)
@@ -991,6 +1035,25 @@ function admDraw() {
         <a class="btn ${c.status === 'PREENCHIDO' ? '' : 'pri'}" style="text-decoration:none;color:inherit" href="${esc(c.waLink)}" target="_blank" rel="noopener">📲 ${c.status === 'PREENCHIDO' ? 'Reenviar' : 'WhatsApp'}</a>
         <button class="btn" onclick="copiar(window.ACAD[${i}].link)">Copiar link</button>
         <button class="btn" onclick="admCadDel(${i})">🗑</button></div>`).join('')}</div>
+    <div class="card"><h3 style="margin:0 0 6px;font-size:15px">🍽️ Valores de refeição</h3>
+      <div class="muted" style="font-size:12px">Aparecem no link de cadastro e na agenda de cada técnico.</div>
+      <div class="pm" style="position:static;display:block;background:none;padding:0"><div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="flex:1;min-width:110px">Almoço (R$)<input id="rfA" inputmode="decimal" value="${esc(String((D.refeicao || {}).almoco || ''))}"></label>
+        <label style="flex:1;min-width:110px">Janta (R$)<input id="rfJ" inputmode="decimal" value="${esc(String((D.refeicao || {}).janta || ''))}"></label>
+        <label style="flex:1;min-width:110px">Janta após<input id="rfH" type="time" value="${esc((D.refeicao || {}).jantaApos || '20:00')}"></label></div>
+        <label>Observação (opcional)<input id="rfO" value="${esc((D.refeicao || {}).obs || '')}" placeholder="Ex.: reembolso com nota fiscal"></label></div>
+      <button class="btn pri" style="margin-top:12px" id="rfGo">💾 Salvar valores de refeição</button></div>
+    <div class="card"><h3 style="margin:0 0 6px;font-size:15px">💼 Funções e valores combinados</h3>
+      <div class="muted" style="font-size:12px">Cada pessoa pode ter várias funções, cada uma com o seu valor. Vêm do cadastro, e o técnico pode adicionar funções novas pela agenda (você recebe um e-mail). Aqui você ajusta ou tira.</div>
+      <div class="pm" style="position:static;display:block;background:none;padding:0"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <label style="flex:2;min-width:160px">Pessoa<input id="cxN" list="dlCx" autocapitalize="characters"><datalist id="dlCx">${(D.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
+        <label style="flex:2;min-width:160px">Função<select id="cxF">${(D.opcoesFuncao || []).map(o => `<option>${esc(o)}</option>`).join('')}<option value="OUTRA">OUTRA</option></select></label>
+        <label style="flex:1;min-width:100px">Valor (R$)<input id="cxV" inputmode="decimal"></label></div>
+        <label id="cxOL" style="display:none">Descreva a função<input id="cxO" autocapitalize="characters"></label></div>
+      <button class="btn pri" style="margin-top:12px" id="cxGo">💾 Salvar função</button>
+      ${(D.cacheLista || []).map((p, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(p.nome)}</b></div>
+        ${p.funcoes.map((f, j) => `<div style="display:flex;gap:8px;align-items:center;width:100%;font-size:14px"><span style="flex:1">${esc(f.funcao)} <span class="muted" style="font-size:11px">${esc(f.origem.toLowerCase())}</span></span><b>${esc(f.valorFmt)}</b>
+          <button class="btn" style="padding:4px 8px" title="Editar" onclick="cxEditar(${i},${j})">✏️</button><button class="btn" style="padding:4px 8px" title="Tirar" onclick="cxTirar(${i},${j})">🗑</button></div>`).join('')}</div>`).join('')}</div>
     <div class="card"><h3 style="margin:0 0 6px;font-size:15px">👥 Coordenadores</h3>
       <div class="muted" style="font-size:12px;margin-bottom:6px">Lista de coordenadores (nome e celular). São eles que aparecem para escolher o responsável pelo QR Code e o coordenador de cada evento.</div>
       <div class="muted" style="font-size:12px">Cada coordenador recebe um link só dele: vê a escala de todos os eventos e manda o link de check-in do evento e a agenda individual de cada técnico. Não altera nada. Só você cadastra e envia esses links; remover desliga o link na hora.</div>
@@ -1054,6 +1117,16 @@ function admDraw() {
     };
   }
   if (AD.tab === 'coordg') {
+    window.ACX = D.cacheLista || [];
+    document.getElementById('rfGo').onclick = async () => {
+      const v = id => document.getElementById(id).value;
+      try { const r = await admPost({ acao: 'adm_refeicao', almoco: v('rfA'), janta: v('rfJ'), jantaApos: v('rfH'), obs: v('rfO') }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+    };
+    document.getElementById('cxF').onchange = ev => { document.getElementById('cxOL').style.display = ev.target.value === 'OUTRA' ? '' : 'none'; };
+    document.getElementById('cxGo').onclick = async () => {
+      const v = id => document.getElementById(id).value;
+      try { const r = await admPost({ acao: 'adm_cache_salvar', nome: v('cxN'), funcao: v('cxF'), outra: v('cxO'), valor: v('cxV') }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+    };
     document.getElementById('cdGo').onclick = async () => {
       try { const r = await admPost({ acao: 'adm_cad_novo', nome: document.getElementById('cdN').value, tel: document.getElementById('cdW').value });
         avisar('✅ ' + r.msg); await admCarregar(); admDraw(); window.open(r.cad.waLink, '_blank'); }
@@ -1300,10 +1373,12 @@ async function initCadastro() {
     ${D.preenchido ? `<div class="card" style="border-color:var(--accent)"><b>✅ Você já enviou o cadastro em ${esc(D.preenchido)}.</b><div class="muted" style="font-size:13px">Se precisar corrigir, preencha de novo e envie: os dados novos substituem os anteriores.</div></div>` : ''}
     <div class="card"><div class="muted" style="font-size:13px">Por favor, preencha seus dados. Eles ficam só com a administração e são usados para o seu cadastro e para os pagamentos. Campos com <span style="color:var(--red)">*</span> são obrigatórios.</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0">
-        <label>Função <span style="color:var(--red)">*</span><select id="fFun"><option value="">Escolha a sua função…</option>${(D.funcoes || []).map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}<option value="OUTRA">OUTRA</option></select></label>
-        <label id="fFunOutL" style="display:none">Descreva a sua função <span style="color:var(--red)">*</span><input id="fFunOut" placeholder="Ex.: operador de teleprompter" autocapitalize="characters"></label>
+        <label>Funções e valor combinado (diária) <span style="color:var(--red)">*</span></label>
+        <div class="muted" style="font-size:12px;margin-top:4px">Coloque cada função que você faz com o valor que foi combinado. Ex.: PPT 450 · RESOLUME 600 · PROCESSAMENTO/RESOLUME 700.</div>
+        <div id="fFuns"></div>
+        <button class="btn" type="button" id="fAddFun" style="margin-top:8px">➕ Adicionar função</button>
+        ${D.refeicao ? `<div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--panel2);font-size:13px">🍽️ <b>Refeição:</b> ${esc(D.refeicao.txt)}</div>` : ''}
         ${campo('fNome', 'Nome completo', 'autocapitalize="words" autocomplete="name"', true)}
-        ${campo('fCache', 'Cachê (valor da diária)', 'inputmode="decimal" placeholder="Ex.: R$ 350,00"')}
         ${campo('fRg', 'RG', 'inputmode="text"')}
         ${campo('fCpf', 'CPF', 'inputmode="numeric" placeholder="000.000.000-00"', true)}
         ${campo('fCnpj', 'CNPJ (se tiver)', 'inputmode="numeric" placeholder="00.000.000/0000-00"')}
@@ -1320,7 +1395,20 @@ async function initCadastro() {
       <div id="fMsg"></div>
       <button class="btn pri big" style="width:100%;justify-content:center;margin-top:14px" id="fGo">📨 Enviar cadastro</button></div>
     <div class="foot">Seus dados são tratados com sigilo e usados só para cadastro e pagamento.</div>`;
-  document.getElementById('fFun').onchange = ev => { const o = ev.target.value === 'OUTRA'; document.getElementById('fFunOutL').style.display = o ? '' : 'none'; if (o) document.getElementById('fFunOut').focus(); };
+  const funBox = document.getElementById('fFuns');
+  const linhaFun = () => {
+    const d = document.createElement('div'); d.className = 'funrow';
+    d.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px';
+    d.innerHTML = `<select class="fF" style="flex:2;min-width:0;margin:0"><option value="">Função…</option>${(D.funcoes || []).map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}<option value="OUTRA">OUTRA</option></select>
+      <input class="fV" inputmode="decimal" placeholder="R$" style="flex:0 0 90px;width:90px;margin:0">
+      <button class="btn fX" type="button" title="Tirar" style="padding:10px 12px">🗑</button>
+      <input class="fO" placeholder="Descreva a função" autocapitalize="characters" style="flex-basis:100%;margin:0;display:none">`;
+    d.querySelector('.fF').onchange = ev => { const o = d.querySelector('.fO'); o.style.display = ev.target.value === 'OUTRA' ? '' : 'none'; if (ev.target.value === 'OUTRA') o.focus(); };
+    d.querySelector('.fX').onclick = () => { if (funBox.children.length > 1) d.remove(); else { d.querySelector('.fF').value = ''; d.querySelector('.fV').value = ''; } };
+    funBox.appendChild(d);
+  };
+  linhaFun();
+  document.getElementById('fAddFun').onclick = linhaFun;
   mascara(document.getElementById('fCpf'), 'cpf'); mascara(document.getElementById('fCnpj'), 'cnpj');
   mascara(document.getElementById('fTel'), 'tel'); mascara(document.getElementById('fTelE'), 'tel');
   const val = id => document.getElementById(id).value;
@@ -1329,7 +1417,8 @@ async function initCadastro() {
     const nrs = [...document.querySelectorAll('.fNr:checked')].map(x => x.value).concat(val('fNrOut') ? [val('fNrOut')] : []).join(', ');
     b.disabled = true; m.innerHTML = '<div class="muted" style="margin-top:10px">Enviando…</div>';
     try {
-      const r = await apiPost({ acao: 'cad_enviar', cd: CADR, dados: { funcao: val('fFun'), funcaoOutra: val('fFunOut'), completo: val('fNome'), cache: val('fCache'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
+      const funcoes = [...funBox.querySelectorAll('.funrow')].map(d => ({ funcao: d.querySelector('.fF').value, outra: d.querySelector('.fO').value, valor: d.querySelector('.fV').value })).filter(x => x.funcao);
+      const r = await apiPost({ acao: 'cad_enviar', cd: CADR, dados: { funcoes, completo: val('fNome'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
         nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), nrs } });
       app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Cadastro</h1><div class="sub">${esc(D.nome)}</div></div></header>
         <div class="card" style="border-color:var(--accent);text-align:center;padding:28px 18px"><div style="font-size:44px">✅</div><h2 style="margin:8px 0">Cadastro enviado!</h2><div class="muted">${esc(r.msg)}</div></div>`;
@@ -1631,6 +1720,7 @@ if (CADR) {
   barraSessao();
   refresh(true);
   loadPonto();
+  loadCache();
   setInterval(() => { if (!document.hidden) refresh(); }, 60000);
   // responsável pelo link da agenda: atualiza o ponto a cada minuto para os avisos (12 h, horários para confirmar)
   setInterval(() => { if (!document.hidden && S.ponto && S.ponto.coordena && S.ponto.coordena.length && document.getElementById('pm').style.display !== 'grid') loadPonto(); }, 60000);
