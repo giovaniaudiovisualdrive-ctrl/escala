@@ -565,6 +565,49 @@ const corrHtml = (lista, ctxTxt, depoisTxt, comNome) => (window.PC = lista || []
 
 /* ----- relatório de horas por evento ----- */
 /** ctx = { t, ev? } (agenda individual) ou { e, nome? } (link do evento: a pessoa digita o nome) */
+/* ----- contestação de diárias (agenda e link do evento) ----- */
+const CONT_ST = { 'ABERTA': ['⏳ Aberta', 'var(--amber)'], 'EM ANÁLISE': ['🔎 Em análise', 'var(--amber)'], 'RESOLVIDA': ['✅ Resolvida', 'var(--accent)'], 'NÃO PROCEDE': ['✖ Não procede', 'var(--muted)'] };
+function contStHtml(c) { const s = CONT_ST[c.status] || [c.status, 'var(--muted)']; return `<span style="font-size:12px;font-weight:700;color:${s[1]}">${s[0]}</span>`; }
+async function abrirContestacao(ctx) {
+  const el = document.getElementById('pm'); el.style.display = 'grid';
+  el.innerHTML = '<div class="box"><h3>💰 Contestação de diárias</h3><div class="spin" style="margin:18px auto"></div></div>';
+  const q = ctx.t ? { f: 'cont', t: ctx.t } : { f: 'cont', e: ctx.e, cv: chatConv() };
+  let D;
+  try { D = await apiGet(q); } catch (e) { el.innerHTML = `<div class="box"><h3>💰 Contestação de diárias</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts"><button class="btn pri" onclick="closeP()">Fechar</button></div></div>`; return; }
+  const libs = D.quinzenas.filter(z => z.liberada), prox = D.quinzenas.filter(z => !z.liberada);
+  const minhas = D.minhas.map(c => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b style="font-size:14px">Quinzena ${esc(c.quinzena)}${c.evento ? ' · ' + esc(c.evento) : ''}</b>
+    <span class="muted" style="font-size:12px">Enviada ${esc(c.criada)} · trabalhou ${esc(c.trab)} · recebeu ${esc(c.receb)}</span>${contStHtml(c)}
+    ${c.resposta ? `<div style="font-size:13px;margin-top:6px;padding:8px 10px;border-radius:9px;background:var(--panel)"><b>Resposta da administração:</b> ${esc(c.resposta)}${c.previsao ? `<br><b>Previsão de pagamento:</b> ${esc(c.previsao)}` : ''}</div>` : ''}</div></div>`).join('');
+  const resumo = z => z && typeof z.escalados === 'number' ? `Na escala: <b>${z.escalados}</b> dia(s) · no ponto: <b>${z.diariasPonto}</b> diária(s)${z.eventos.length ? ' · ' + esc(z.eventos.join(', ')) : ''}` : '';
+  el.innerHTML = `<div class="box"><h3>💰 Contestação de diárias</h3>
+    <div class="muted" style="font-size:12px">${esc(D.regra)} Se você não recebeu a quantidade certa de diárias, conte aqui: a administração é avisada e responde pelo WhatsApp.</div>
+    ${minhas ? `<div class="muted" style="font-size:11px;margin-top:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Minhas contestações</div>${minhas}` : ''}
+    ${libs.length ? `<label>Quinzena<select id="ctQ">${libs.map(z => `<option value="${z.id}">${esc(z.txt)} · pago até ${esc(z.pagFmt)}</option>`).join('')}</select></label>
+      <div class="muted" id="ctRes" style="font-size:12px;margin-top:6px"></div>
+      ${ctx.t ? `<label>Evento (opcional)<input id="ctE" list="dlCtE" placeholder="Em qual evento faltou?"><datalist id="dlCtE"></datalist></label>` : `<div class="muted" style="font-size:12px;margin-top:8px">Evento: <b>${esc(D.evento)}</b></div>`}
+      ${ctx.e ? `<label>Seu nome completo<input id="ctN" value="${esc(lsGet('ponto_nome') || '')}" autocomplete="name"></label>` : ''}
+      <div style="display:flex;gap:8px"><label style="flex:1">Dias trabalhados<input id="ctT" type="number" inputmode="numeric" min="0" max="31"></label><label style="flex:1">Dias recebidos<input id="ctR" type="number" inputmode="numeric" min="0" max="31"></label></div>
+      <label>O que aconteceu<textarea id="ctD" rows="3" placeholder="Ex.: Trabalhei 4 dias e recebi só 3. Por favor, verificar."></textarea></label>
+      <label>Seu WhatsApp (para a resposta)<input id="ctW" type="tel" inputmode="tel" value="${esc(D.telFmt || lsGet('ponto_wa') || '')}" placeholder="(11) 99999-8888"></label>
+      <div id="ctMsg"></div>
+      <div class="acts"><button class="btn" onclick="closeP()">Fechar</button><button class="btn pri" id="ctGo">📨 Enviar contestação</button></div>`
+    : `<div class="msg-ok" style="margin-top:12px">Ainda não há quinzena com pagamento vencido para contestar.</div><div class="acts"><button class="btn pri" onclick="closeP()">Fechar</button></div>`}
+    ${prox.length ? `<div class="muted" style="font-size:12px;margin-top:10px">Quinzena ${esc(prox[0].txt)}: o pagamento vence em ${esc(prox[0].pagFmt)}; a contestação abre depois dessa data.</div>` : ''}</div>`;
+  const sel = document.getElementById('ctQ'); if (!sel) return;
+  const att = () => { const z = libs.find(x => x.id === sel.value); document.getElementById('ctRes').innerHTML = resumo(z); const dl = document.getElementById('dlCtE'); if (dl && z) dl.innerHTML = z.eventos.map(n => `<option value="${esc(n)}">`).join(''); };
+  sel.onchange = att; att();
+  document.getElementById('ctGo').onclick = async () => {
+    const b = document.getElementById('ctGo'), v = id => (document.getElementById(id) || {}).value || '';
+    b.disabled = true; document.getElementById('ctMsg').innerHTML = '<div class="muted" style="margin-top:10px">Enviando…</div>';
+    try {
+      const body = Object.assign({ acao: 'cont_enviar', quinzena: v('ctQ'), evento: v('ctE'), trab: v('ctT'), receb: v('ctR'), desc: v('ctD'), tel: v('ctW') }, ctx.t ? { t: ctx.t } : { e: ctx.e, cv: chatConv(), nome: v('ctN') });
+      const r = await apiPost(body);
+      if (ctx.e && v('ctN')) lsSet('ponto_nome', v('ctN')); lsSet('ponto_wa', v('ctW'));
+      avisar('✅ Contestação enviada'); abrirContestacao(ctx);
+      setTimeout(() => { const m = document.querySelector('#pm .box'); if (m) m.insertAdjacentHTML('afterbegin', `<div class="msg-ok" style="margin:0 0 10px">${esc(r.msg)}</div>`); }, 1600);
+    } catch (e) { b.disabled = false; document.getElementById('ctMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+  };
+}
 async function abrirRelatorio(ctx) {
   const el = document.getElementById('pm');
   if (ctx.e && !ctx.nome) {
@@ -684,7 +727,8 @@ function pontoCardHtml() {
   const scanOutro = !p.abertos.length ? `<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="${act({ acao: 'checkin', qr: true, evento: '', sub: '', role: '', exigir: false, depois: loadPonto })}">📷 Check-in com QR Code (outro evento)</button>` : '';
   return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${corr}${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
     ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}
-    ${p.abertos.length || p.recentes.length ? '<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="abrirRelatorio({ t: TOKEN })">📄 Relatório de horas por evento</button>' : ''}</div>`;
+    ${p.abertos.length || p.recentes.length ? '<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="abrirRelatorio({ t: TOKEN })">📄 Relatório de horas por evento</button>' : ''}
+    <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirContestacao({ t: TOKEN })">💰 Contestação de diárias</button></div>`;
 }
 async function loadPonto() {
   try { S.ponto = await apiGet({ f: 'ponto', t: TOKEN }); } catch (e) { S.ponto = { erro: e.message || String(e) }; }
@@ -730,6 +774,7 @@ async function initEvento() {
       <div style="display:flex;gap:8px"><button class="btn pri big" id="bIn">✅ Check-in</button><button class="btn out big" id="bOut">🏁 Check-out</button></div>
       ${d.motorista && !aberto ? '<button class="btn big" id="bMot" style="width:100%;justify-content:center;margin-top:8px">🚐 Check-in motorista</button>' : ''}
       <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirRelatorio({ e: EV })">📄 Relatório das minhas horas neste evento</button>
+      <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirContestacao({ e: EV })">💰 Contestação de diárias</button>
       <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}${d.qr ? ' · ▣ Escaneie o QR Code na tela do responsável.' : ''}</div></div>
     ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · HE ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
     <div class="foot">Os registros vão direto para a coordenação.</div>`;
@@ -800,6 +845,15 @@ async function admQrMasterNovo() {
   try { const r = await admPost({ acao: 'adm_qrmaster_novo' }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (err) { alert(err.message || err); }
 }
 const AC = { edit: null, novo: null, convite: null };
+async function contResponder(i) {
+  const c = window.ACT[i], v = id => (document.getElementById(id) || {}).value || '';
+  const w = window.open('', '_blank');   // abre já (o navegador bloqueia janela aberta depois da espera)
+  try {
+    const r = await admPost({ acao: 'adm_cont_responder', id: c.id, status: v('ctS' + i), resposta: v('ctA' + i), previsao: v('ctP' + i) });
+    if (w) w.location.href = r.waLink; else window.open(r.waLink, '_blank');
+    avisar('✅ ' + r.msg); await admCarregar(); admDraw();
+  } catch (e) { if (w) w.close(); alert(e.message || e); }
+}
 function acsConvite(i) {
   const u = window.AACS[i], base = location.origin + location.pathname;
   const txt = 'Olá, ' + (u.nome.split(' ')[0] || '') + '! Seu acesso à *Escala Técnica* está pronto.\n\nEntre em: ' + base + '\nE-mail: ' + u.email + '\n\nNo primeiro acesso toque em *"Primeiro acesso / esqueci a senha"*: você recebe um código no e-mail e cria a sua senha.';
@@ -826,7 +880,8 @@ async function admExcluir(r) {
 function admDraw() {
   const D = AD.d, app = document.getElementById('app');
   const nChat = AD.chat ? AD.chat.naoLidas : 0;
-  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['acessos', '🔐 Acessos'], ['conv', '📣 Convocação'], ['regra', 'Regra e locais']];
+  const nCont = (D.contestacoes || []).filter(c => c.status === 'ABERTA' || c.status === 'EM ANÁLISE').length;
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['acessos', '🔐 Acessos'], ['cont', '💰 Contestações' + (nCont ? ` (${nCont})` : '')], ['conv', '📣 Convocação'], ['regra', 'Regra e locais']];
   let body = '';
   if (AD.tab === 'chat') {
     const C = AD.chat || { conversas: [], msgs: [], ativo: true };
@@ -876,6 +931,22 @@ function admDraw() {
         <button class="btn" onclick="abrirConferir({ a: ADM, ev: window.AL[${i}].key, depois: () => admCarregar().then(admDraw) })">⏱ Conferir${e.pendentes ? ` <span class="nb">${e.pendentes}</span>` : ''}</button>
         <button class="btn" onclick="copiar(window.AL[${i}].link)">Copiar</button>
         <button class="btn pri" onclick="window.open('https://wa.me/?text='+encodeURIComponent('*Check-in / check-out · '+window.AL[${i}].nome+'*\\nFaça seu check-in ao chegar e o check-out ao sair:\\n'+window.AL[${i}].link),'_blank')">WhatsApp</button></div>`; }).join('') || '<div class="muted">Nenhum evento em andamento ou futuro.</div>'}</div>`;
+  } else if (AD.tab === 'cont') {
+    const L = D.contestacoes || [], f = AD.contF || 'pend';
+    window.ACT = L;
+    const lista = L.filter(c => f === 'todas' || (f === 'pend' ? (c.status === 'ABERTA' || c.status === 'EM ANÁLISE') : (c.status === 'RESOLVIDA' || c.status === 'NÃO PROCEDE')));
+    body = `<div class="card"><h3 style="margin:0 0 4px;font-size:15px">💰 Contestação de diárias</h3><div class="muted" style="font-size:12px">O técnico abre pela agenda dele ou pelo link do evento depois da data de pagamento da quinzena. Você recebe um e-mail a cada contestação. Responda aqui e mande a resposta pelo WhatsApp: ele também vê a resposta no app.</div>
+      <div class="tabs" style="margin-top:10px;flex-wrap:wrap">${[['pend', 'Pendentes'], ['fim', 'Respondidas'], ['todas', 'Todas']].map(([k, l]) => `<button class="btn ${f === k ? 'on' : ''}" onclick="AD.contF='${k}';admDraw()">${l}</button>`).join('')}</div></div>
+      ${lista.map(c => { const i = L.indexOf(c); return `<div class="card" style="${c.status === 'ABERTA' ? 'border-color:var(--amber)' : ''}"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${esc(c.nome)}</b>${contStHtml(c)}</div>
+        <div class="muted" style="font-size:12px">Quinzena ${esc(c.quinzena)}${c.evento ? ' · ' + esc(c.evento) : ''} · ${esc(c.origem.toLowerCase())} · ${esc(c.criada)} · ${esc(c.telFmt)}</div>
+        <div style="margin-top:8px;font-size:14px">Trabalhou <b>${esc(c.trab)}</b> dia(s) · recebeu <b>${esc(c.receb)}</b> dia(s)</div>
+        <div style="margin-top:6px;font-size:14px;padding:8px 10px;border-radius:9px;background:var(--panel2)">“${esc(c.desc)}”</div>
+        <div class="pm" style="position:static;display:block;background:none;padding:0">
+          <label>Situação<select id="ctS${i}">${['ABERTA', 'EM ANÁLISE', 'RESOLVIDA', 'NÃO PROCEDE'].map(s => `<option ${c.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+          <label>Resposta para o técnico<textarea id="ctA${i}" rows="3" placeholder="Ex.: Verificamos e faltou 1 diária. Vai ser paga junto com a próxima quinzena.">${esc(c.resposta)}</textarea></label>
+          <label>Previsão de pagamento (se houver)<input id="ctP${i}" type="date" value="${c.previsao ? esc(c.previsao.split('/').reverse().join('-')) : ''}"></label></div>
+        ${c.respondida ? `<div class="muted" style="font-size:12px;margin-top:6px">Respondida em ${esc(c.respondida)}</div>` : ''}
+        <button class="btn pri" style="margin-top:10px" onclick="contResponder(${i})">💾 Salvar e enviar no WhatsApp</button></div>`; }).join('') || '<div class="card muted">Nenhuma contestação aqui.</div>'}`;
   } else if (AD.tab === 'acessos') {
     const L = D.acessos || [], E = AC.edit ? L.find(x => x.email === AC.edit) : null, F = E || AC.novo || { nivel: 'TÉCNICO', perms: ['agenda', 'escala', 'pendencias', 'qr'] };
     window.AACS = L;
@@ -963,6 +1034,7 @@ function admDraw() {
   }
   app.style.maxWidth = '980px';
   app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Administração do ponto</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
+    ${nCont && AD.tab !== 'cont' ? `<div class="card" style="border-color:var(--amber);cursor:pointer;padding:12px 16px" onclick="AD.tab='cont';admDraw()"><b>💰 ${nCont} ${nCont > 1 ? 'contestações' : 'contestação'} de diárias aguardando resposta</b> <span class="muted" style="font-size:12px">· toque para ver</span></div>` : ''}
     <div class="tabs" style="flex-wrap:wrap">${tabs.map(([k, l]) => `<button class="btn ${AD.tab === k ? 'on' : ''}" onclick="AD.tab='${k}';${k === 'conv' ? 'CVS.d=null;' : ''}admDraw()">${l}</button>`).join('')}</div>${body}
     <div class="foot">Acesso só ao ponto. Para mudar a escala, fale com a coordenação.</div>`;
   if (AD.tab === 'reg') {
