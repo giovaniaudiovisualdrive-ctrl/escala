@@ -1200,7 +1200,60 @@ $('#btnMark').onclick = async () => {
 };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeDrawer(); closeModal(); } });
 
-load();
+/* ---------- Login do Controle (mesmo e-mail e senha do app) ---------- */
+const lsG = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsS = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
+const APP_URL = location.origin + location.pathname.replace(/painel\.html$/, '');
+async function authGet(p) { const r = await fetch(API_URL + '?' + new URLSearchParams(Object.assign(p, { _: Date.now() })), { credentials: 'omit', cache: 'no-store' }); const d = await r.json(); if (d.erro) throw new Error(d.erro); return d; }
+async function authPost(b) { const r = await fetch(API_URL, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(b) }); const d = await r.json(); if (d.erro) throw new Error(d.erro); return d; }
+function sairControle() { ['bt_sessao', 'bt_sessao_nome', 'bt_sessao_nivel', 'bt_sessao_ctrl'].forEach(k => lsS(k, null)); location.href = location.origin + location.pathname; }
+function irPara(r) {
+  lsS('bt_sessao', r.s || lsG('bt_sessao')); if (r.nome) lsS('bt_sessao_nome', r.nome); if (r.nivel) lsS('bt_sessao_nivel', r.nivel);
+  lsS('bt_sessao_ctrl', (r.destino && r.destino.controle) || '');
+  location.replace(r.destino.controle || r.destino.app);   // só administrador abre o Controle; os outros vão para a tela deles no app
+}
+async function loginControle() {
+  const s = lsG('bt_sessao');
+  if (s) { try { const d = await authGet({ f: 'sessao', s }); return irPara(Object.assign({ s }, d)); } catch (e) { if (/SESSAO/.test(e.message || '')) ['bt_sessao', 'bt_sessao_nome', 'bt_sessao_nivel', 'bt_sessao_ctrl'].forEach(k => lsS(k, null)); } }
+  const L = { passo: 'senha', email: lsG('bt_ult_email') || '', msg: '' };
+  const box = document.createElement('div'); box.id = 'loginCtl';
+  box.style.cssText = 'position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;place-items:center;padding:20px;overflow:auto';
+  document.body.appendChild(box);
+  const tela = () => {
+    box.innerHTML = `<div style="width:min(420px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px">
+      <div class="brand" style="margin-bottom:16px"><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span style="font-family:Arial,sans-serif;font-size:19px;letter-spacing:-1px">bt</span></div><div><b>Escala Técnica · Controle</b><small>${L.passo === 'senha' ? 'Entrar' : L.passo === 'email' ? 'Primeiro acesso / esqueci a senha' : 'Criar senha'}</small></div></div>
+      <div class="muted" style="font-size:13px;margin-bottom:10px">${L.passo === 'senha' ? 'Use o e-mail e a senha do app. O Controle completo abre só para administradores.' : L.passo === 'email' ? 'Digite seu e-mail: enviamos um código para você criar a sua senha.' : 'Digite o código que chegou no e-mail (confira o spam) e escolha uma senha.'}</div>
+      <div class="field"><label>E-mail</label><input class="ctl" id="lgE" type="email" autocomplete="username" value="${esc(L.email)}" ${L.passo === 'codigo' ? 'readonly' : ''} style="width:100%"></div>
+      ${L.passo === 'senha' ? '<div class="field" style="margin-top:10px"><label>Senha</label><input class="ctl" id="lgS" type="password" autocomplete="current-password" style="width:100%"></div>' : ''}
+      ${L.passo === 'codigo' ? '<div class="field" style="margin-top:10px"><label>Código (6 números)</label><input class="ctl" id="lgC" inputmode="numeric" maxlength="6" style="width:100%"></div><div class="field" style="margin-top:10px"><label>Nova senha (mínimo 6)</label><input class="ctl" id="lgS" type="password" autocomplete="new-password" style="width:100%"></div><div class="field" style="margin-top:10px"><label>Repita a senha</label><input class="ctl" id="lgS2" type="password" autocomplete="new-password" style="width:100%"></div>' : ''}
+      <div id="lgMsg" style="margin-top:10px;min-height:20px">${L.msg}</div>
+      <button class="btn pri" id="lgGo" style="width:100%;justify-content:center;margin-top:6px;padding:11px">${L.passo === 'senha' ? 'Entrar' : L.passo === 'email' ? '📧 Enviar código' : '✓ Criar senha e entrar'}</button>
+      <div style="text-align:center;margin-top:14px"><a href="#" id="lgTroca" style="color:var(--muted);font-size:13px">${L.passo === 'senha' ? 'Primeiro acesso / esqueci a senha' : '← Voltar para entrar com senha'}</a></div></div>`;
+    const go = $('#lgGo'), val = id => (document.getElementById(id) || {}).value || '';
+    $('#lgTroca').onclick = ev => { ev.preventDefault(); L.email = val('lgE'); L.msg = ''; L.passo = L.passo === 'senha' ? 'email' : 'senha'; tela(); };
+    go.onclick = async () => {
+      L.email = val('lgE').trim(); go.disabled = true; $('#lgMsg').innerHTML = '<span class="muted">Aguarde…</span>';
+      try {
+        if (L.passo === 'senha') { const r = await authPost({ acao: 'auth_login', email: L.email, senha: val('lgS') }); lsS('bt_ult_email', L.email); irPara(r); }
+        else if (L.passo === 'email') { const r = await authPost({ acao: 'auth_codigo', email: L.email }); L.passo = 'codigo'; L.msg = `<span style="color:var(--green,#1fbf75)">${esc(r.msg)}</span>`; tela(); }
+        else { if (val('lgS') !== val('lgS2')) throw new Error('As duas senhas não são iguais.'); const r = await authPost({ acao: 'auth_senha', email: L.email, codigo: val('lgC'), senha: val('lgS') }); lsS('bt_ult_email', L.email); irPara(r); }
+      } catch (e) { go.disabled = false; $('#lgMsg').innerHTML = `<span style="color:var(--red,#ff5b5f);font-weight:600">⚠ ${esc(e.message || e)}</span>`; }
+    };
+    box.querySelectorAll('input').forEach(i => i.addEventListener('keydown', ev => { if (ev.key === 'Enter') go.click(); }));
+    const f = document.getElementById(L.passo === 'codigo' ? 'lgC' : L.email ? 'lgS' : 'lgE'); if (f) f.focus();
+  };
+  tela();
+}
+if (IS_CONTROLE && !ADMIN_KEY) loginControle();
+else {
+  load();
+  if (IS_CONTROLE && lsG('bt_sessao')) {
+    const b = document.createElement('button'); b.className = 'btn'; b.textContent = '⎋ Sair'; b.title = lsG('bt_sessao_nome') || '';
+    b.onclick = () => { if (confirm('Sair deste aparelho?')) sairControle(); };
+    const ap = document.createElement('a'); ap.className = 'btn'; ap.textContent = '📱 App'; ap.href = APP_URL; ap.title = 'Abrir o app (Administração do ponto)'; ap.style.textDecoration = 'none';
+    $('#btnReload').before(ap, b);
+  }
+}
 </script>
 </body>
 </html>

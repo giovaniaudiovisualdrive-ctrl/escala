@@ -64,6 +64,7 @@ h1{margin:0;font-size:20px}.sub{color:var(--muted);font-size:12px;display:flex;a
 .pm .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;width:min(440px,100%);max-height:92vh;overflow:auto}
 .pm h3{margin:0 0 4px}.pm label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-top:12px;text-transform:uppercase;letter-spacing:.4px}
 .pm input,.pm select,.pm textarea{width:100%;margin-top:6px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px;color:var(--text);font:inherit;font-size:16px}
+.card .pm{place-items:normal}
 .pm .acts{display:flex;gap:8px;margin-top:16px}.pm .acts .btn{flex:1;justify-content:center}
 .calc{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
 .calc div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-size:11px;color:var(--muted)}
@@ -782,6 +783,18 @@ async function admQrMasterNovo() {
   if (!confirm('Gerar um link master novo? O link atual para de funcionar na hora.')) return;
   try { const r = await admPost({ acao: 'adm_qrmaster_novo' }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (err) { alert(err.message || err); }
 }
+const AC = { edit: null, novo: null, convite: null };
+function acsConvite(i) {
+  const u = window.AACS[i], base = location.origin + location.pathname;
+  const txt = 'Olá, ' + (u.nome.split(' ')[0] || '') + '! Seu acesso à *Escala Técnica* está pronto.\n\nEntre em: ' + base + '\nE-mail: ' + u.email + '\n\nNo primeiro acesso toque em *"Primeiro acesso / esqueci a senha"*: você recebe um código no e-mail e cria a sua senha.';
+  window.open('https://wa.me/' + (u.cel || '') + '?text=' + encodeURIComponent(txt), '_blank');
+}
+async function acsAcao(acao, i) {
+  const u = window.AACS[i];
+  const pergunta = acao === 'adm_acesso_del' ? 'Apagar o acesso de ' + u.nome + '? Ele deixa de entrar na hora.' : 'Zerar a senha de ' + u.nome + '? Ele sai de todos os aparelhos e cria uma senha nova pelo código no e-mail.';
+  if (!confirm(pergunta)) return;
+  try { const r = await admPost({ acao, email: u.email }); avisar(r.msg); if (AC.edit === u.email) AC.edit = null; await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+}
 async function admCadDel(i) {
   const c = window.ACAD[i]; if (!confirm('Cancelar o cadastro de ' + c.nome + '? O link para de funcionar' + (c.status === 'PREENCHIDO' ? ' (os dados já enviados continuam na planilha).' : '.'))) return;
   try { const r = await admPost({ acao: 'adm_cad_del', id: c.id }); avisar(r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
@@ -797,7 +810,7 @@ async function admExcluir(r) {
 function admDraw() {
   const D = AD.d, app = document.getElementById('app');
   const nChat = AD.chat ? AD.chat.naoLidas : 0;
-  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['conv', '📣 Convocação'], ['regra', 'Regra e locais']];
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['acessos', '🔐 Acessos'], ['conv', '📣 Convocação'], ['regra', 'Regra e locais']];
   let body = '';
   if (AD.tab === 'chat') {
     const C = AD.chat || { conversas: [], msgs: [], ativo: true };
@@ -847,6 +860,36 @@ function admDraw() {
         <button class="btn" onclick="abrirConferir({ a: ADM, ev: window.AL[${i}].key, depois: () => admCarregar().then(admDraw) })">⏱ Conferir${e.pendentes ? ` <span class="nb">${e.pendentes}</span>` : ''}</button>
         <button class="btn" onclick="copiar(window.AL[${i}].link)">Copiar</button>
         <button class="btn pri" onclick="window.open('https://wa.me/?text='+encodeURIComponent('*Check-in / check-out · '+window.AL[${i}].nome+'*\\nFaça seu check-in ao chegar e o check-out ao sair:\\n'+window.AL[${i}].link),'_blank')">WhatsApp</button></div>`; }).join('') || '<div class="muted">Nenhum evento em andamento ou futuro.</div>'}</div>`;
+  } else if (AD.tab === 'acessos') {
+    const L = D.acessos || [], E = AC.edit ? L.find(x => x.email === AC.edit) : null, F = E || AC.novo || { nivel: 'TÉCNICO', perms: ['agenda', 'escala', 'pendencias', 'qr'] };
+    window.AACS = L;
+    const PERM = [['agenda', 'Agenda da equipe'], ['escala', 'Escala técnica'], ['pendencias', 'Pendências'], ['qr', 'QR Code e conferência']];
+    const nivelTxt = { ADMIN: '👑 Administrador', COORDENADOR: '🧭 Coordenador', 'TÉCNICO': '👤 Técnico' };
+    const grupo = n => L.filter(x => x.nivel === n);
+    const linha = u => { const i = L.indexOf(u); return `<div class="prow" style="flex-wrap:wrap;${u.ativo ? '' : 'opacity:.55'}"><div class="g" style="flex-basis:100%"><b>${esc(u.nome)}${u.ativo ? '' : ' · desativado'}</b><span class="muted" style="font-size:12px">${esc(u.email)}${u.pessoa && u.pessoa !== u.nome ? ' · na escala: ' + esc(u.pessoa) : ''}${u.celFmt ? ' · ' + esc(u.celFmt) : ''}</span>
+        ${u.nivel === 'COORDENADOR' ? `<span style="font-size:12px">Pode ver: ${u.perms.map(k => esc((PERM.find(p => p[0] === k) || [k, k])[1])).join(', ')}</span>` : ''}
+        <span style="font-size:12px;color:${u.temSenha ? 'var(--accent)' : 'var(--amber)'}">${u.temSenha ? '✅ senha criada' + (u.ultimo ? ' · último acesso ' + esc(u.ultimo) : '') : '⏳ ainda não criou a senha'}</span></div>
+        <button class="btn" onclick="AC.edit=window.AACS[${i}].email;AC.convite=null;admDraw();window.scrollTo(0,0)">✏️ Editar</button>
+        <button class="btn" onclick="acsConvite(${i})">📲 Convite</button>
+        ${u.temSenha ? `<button class="btn" onclick="acsAcao('adm_acesso_reset',${i})" title="Apaga a senha: no próximo acesso a pessoa cria outra pelo código no e-mail">🔑 Zerar senha</button>` : ''}
+        ${u.email !== D.emailPrincipal ? `<button class="btn" onclick="acsAcao('adm_acesso_del',${i})">🗑</button>` : ''}</div>`; };
+    body = `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">${E ? '✏️ Editar acesso' : '➕ Novo acesso'}</h3>
+      <div class="muted" style="font-size:12px">Cada pessoa entra no app (e no Controle) com o próprio e-mail e uma senha que ela mesma cria. <b>Administrador</b> vê tudo, como você. <b>Coordenador</b> vê só as partes que você marcar. <b>Técnico</b> vê só a agenda individual dele, com o relatório de horas.</div>
+      <div class="pm" style="position:static;display:block;background:none;padding:0">
+        <label>E-mail<input id="acE" type="email" inputmode="email" value="${esc(F.email || '')}" ${E ? 'readonly style="opacity:.7"' : ''} placeholder="nome@empresa.com"></label>
+        <label>Nome<input id="acN" value="${esc(F.nome || '')}" placeholder="Ex.: ANA" autocapitalize="characters"></label>
+        <label>Nível<select id="acL">${['ADMIN', 'COORDENADOR', 'TÉCNICO'].map(n => `<option value="${n}" ${F.nivel === n ? 'selected' : ''}>${nivelTxt[n]}</option>`).join('')}</select></label>
+        <div id="acPermBox" style="${F.nivel === 'COORDENADOR' ? '' : 'display:none'}"><label>O que o coordenador pode ver</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${PERM.map(([k, l]) => `<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-size:14px;color:var(--text);margin:0;border:1px solid var(--line);border-radius:999px;padding:6px 12px"><input type="checkbox" class="acP" value="${k}" ${(F.perms || []).includes(k) ? 'checked' : ''} style="width:auto;margin:0">${l}</label>`).join('')}</div></div>
+        <div id="acPesBox" style="${F.nivel === 'ADMIN' ? 'display:none' : ''}"><label>Nome na escala <span style="text-transform:none;font-weight:400">(como aparece na planilha; em branco = o nome acima)</span><input id="acS" list="dlEqA" value="${esc(F.pessoa || '')}" autocapitalize="characters"></label>
+          <datalist id="dlEqA">${(D.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist></div>
+        <label>Celular (WhatsApp, para mandar o convite)<input id="acC" type="tel" inputmode="tel" value="${esc(F.celFmt || '')}" placeholder="(11) 99999-8888"></label>
+        ${E ? `<label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="acA" type="checkbox" ${E.ativo ? 'checked' : ''} style="width:auto;margin:0" ${E.email === D.emailPrincipal ? 'disabled' : ''}> Acesso ativo</label>` : ''}</div>
+      <div id="acMsg"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn pri" id="acGo">💾 Salvar acesso</button>${E ? '<button class="btn" onclick="AC.edit=null;AC.convite=null;admDraw()">Cancelar</button>' : ''}</div>
+      ${AC.convite ? `<div class="prow" style="flex-wrap:wrap;border-color:var(--accent)"><div class="g" style="flex-basis:100%"><b>Convite pronto</b><span class="muted" style="font-size:12px">Mande o endereço do app e o e-mail. No primeiro acesso a pessoa recebe um código e cria a senha.</span></div>
+        <a class="btn pri" style="text-decoration:none;color:#fff" href="${esc(AC.convite.waLink)}" target="_blank" rel="noopener">📲 Enviar no WhatsApp</a><button class="btn" onclick="copiar(AC.convite.texto)">Copiar texto</button></div>` : ''}</div>
+    ${['ADMIN', 'COORDENADOR', 'TÉCNICO'].map(n => grupo(n).length ? `<div class="card"><h3 style="margin:0 0 4px;font-size:15px">${nivelTxt[n]}${n === 'ADMIN' ? 'es' : 'es'}</h3>${grupo(n).map(linha).join('')}</div>` : '').join('')}`;
   } else if (AD.tab === 'coordg') {
     window.ACG = D.coordenadores || []; window.ACAD = D.cadastros || [];
     const stCad = c => c.status === 'PREENCHIDO' ? `<span style="font-size:12px;color:var(--accent)">✅ preenchido ${esc(c.preenchido)}${c.funcao ? ' · ' + esc(c.funcao) : ''}${c.completo ? ' · ' + esc(c.completo) : ''}</span>` : `<span style="font-size:12px;color:var(--amber)">⏳ aguardando preenchimento · enviado ${esc(c.convidado)}</span>`;
@@ -909,6 +952,18 @@ function admDraw() {
   if (AD.tab === 'reg') {
     document.getElementById('fEv').onchange = e => { AD.ev = e.target.value; admDraw(); };
     const fq = document.getElementById('fQ'); fq.oninput = () => { AD.q = fq.value; const p = fq.selectionStart; admDraw(); const n = document.getElementById('fQ'); n.focus(); n.setSelectionRange(p, p); };
+  }
+  if (AD.tab === 'acessos') {
+    const nv = document.getElementById('acL');
+    nv.onchange = () => { document.getElementById('acPermBox').style.display = nv.value === 'COORDENADOR' ? '' : 'none'; document.getElementById('acPesBox').style.display = nv.value === 'ADMIN' ? 'none' : ''; };
+    document.getElementById('acGo').onclick = async () => {
+      const v = id => (document.getElementById(id) || {}).value || '';
+      const at = document.getElementById('acA');
+      const body = { acao: 'adm_acesso_salvar', email: v('acE'), nome: v('acN'), nivel: v('acL'), pessoa: v('acS'), cel: v('acC'),
+        perms: [...document.querySelectorAll('.acP:checked')].map(x => x.value), ativo: at ? at.checked : true };
+      try { const r = await admPost(body); avisar('✅ ' + r.msg); AC.edit = null; AC.novo = null; AC.convite = r.convite; await admCarregar(); admDraw(); }
+      catch (e) { AC.novo = Object.assign({}, body, { celFmt: body.cel }); document.getElementById('acMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+    };
   }
   if (AD.tab === 'coordg') {
     document.getElementById('cdGo').onclick = async () => {
@@ -1186,6 +1241,62 @@ async function initCadastro() {
   };
 }
 
+/* ----- login com e-mail e senha (endereço do app sem nada depois) ----- */
+const SEMPARAM = !location.search || location.search === '?';
+const diaSem = iso => ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][new Date(iso + 'T12:00:00').getDay()];
+function sessaoSalvar(r) { lsSet('bt_sessao', r.s); lsSet('bt_sessao_nome', r.nome); lsSet('bt_sessao_nivel', r.nivel); lsSet('bt_sessao_ctrl', (r.destino && r.destino.controle) || ''); }
+function sair() { ['bt_sessao', 'bt_sessao_nome', 'bt_sessao_nivel', 'bt_sessao_ctrl'].forEach(k => lsSet(k, null)); location.href = location.origin + location.pathname; }
+function barraSessao() {
+  if (!lsGet('bt_sessao') || document.getElementById('barSes')) return;
+  const ctrl = lsGet('bt_sessao_ctrl');
+  const b = document.createElement('div'); b.id = 'barSes';
+  b.style.cssText = 'display:flex;gap:6px;justify-content:flex-end;max-width:640px;margin:10px auto -6px;padding:0 16px';
+  b.innerHTML = (ctrl ? `<a class="btn" style="padding:6px 10px;font-size:12px;text-decoration:none;color:inherit" href="${esc(ctrl)}" title="Abrir o Controle (painel completo)">🖥️ Controle</a>` : '') +
+    `<button class="btn" style="padding:6px 10px;font-size:12px" onclick="if(confirm('Sair deste aparelho?'))sair()" title="${esc(lsGet('bt_sessao_nome') || '')}">⎋ Sair</button>`;
+  const app = document.getElementById('app'); app.parentNode.insertBefore(b, app);
+}
+async function initLogin() {
+  document.title = 'Entrar · Escala Técnica';
+  const app = document.getElementById('app'), load = document.getElementById('load');
+  const s = lsGet('bt_sessao');
+  if (s) {
+    try { const d = await apiGet({ f: 'sessao', s }); if (d.destino && d.destino.app) { lsSet('bt_sessao_ctrl', d.destino.controle || ''); location.replace(d.destino.app); return; } }
+    catch (e) { if (/SESSAO/.test(e.message || '')) ['bt_sessao', 'bt_sessao_nome', 'bt_sessao_nivel', 'bt_sessao_ctrl'].forEach(k => lsSet(k, null)); }
+  }
+  load.style.display = 'none';
+  const L = { passo: 'senha', email: lsGet('bt_ult_email') || '', msg: '' };
+  const tela = () => {
+    app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Escala Técnica</h1><div class="sub">base técnica · vídeo</div></div></header>
+      ${faixaTema()}
+      <div class="card" style="max-width:440px;margin:0 auto"><h3 style="margin:0 0 4px">${L.passo === 'senha' ? 'Entrar' : L.passo === 'email' ? 'Primeiro acesso / esqueci a senha' : 'Criar senha'}</h3>
+        <div class="muted" style="font-size:13px">${L.passo === 'senha' ? 'Use o e-mail cadastrado pela administração.' : L.passo === 'email' ? 'Digite seu e-mail: enviamos um código para você criar a sua senha.' : 'Digite o código que chegou no seu e-mail (confira o spam) e escolha uma senha.'}</div>
+        <div class="pm" style="position:static;display:block;background:none;padding:0">
+          <label>E-mail<input id="lgE" type="email" inputmode="email" autocomplete="username" value="${esc(L.email)}" ${L.passo === 'codigo' ? 'readonly style="opacity:.7"' : ''}></label>
+          ${L.passo === 'senha' ? '<label>Senha<input id="lgS" type="password" autocomplete="current-password"></label>' : ''}
+          ${L.passo === 'codigo' ? '<label>Código (6 números)<input id="lgC" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label><label>Nova senha (mínimo 6)<input id="lgS" type="password" autocomplete="new-password"></label><label>Repita a senha<input id="lgS2" type="password" autocomplete="new-password"></label>' : ''}
+        </div>
+        <div id="lgMsg">${L.msg}</div>
+        <button class="btn pri big" style="width:100%;justify-content:center;margin-top:14px" id="lgGo">${L.passo === 'senha' ? 'Entrar' : L.passo === 'email' ? '📧 Enviar código' : '✓ Criar senha e entrar'}</button>
+        <div style="text-align:center;margin-top:14px"><a href="#" id="lgTroca" style="color:var(--muted);font-size:13px">${L.passo === 'senha' ? 'Primeiro acesso / esqueci a senha' : '← Voltar para entrar com senha'}</a></div></div>
+      <div class="foot">Técnicos: a sua agenda também abre pelo link que você recebe no WhatsApp.</div>`;
+    const go = document.getElementById('lgGo'), val = id => (document.getElementById(id) || {}).value || '';
+    document.getElementById('lgTroca').onclick = ev => { ev.preventDefault(); L.email = val('lgE'); L.msg = ''; L.passo = L.passo === 'senha' ? 'email' : 'senha'; tela(); };
+    const entrar = r => { sessaoSalvar(r); lsSet('bt_ult_email', L.email); location.replace(r.destino.app); };
+    const erro = e => { go.disabled = false; document.getElementById('lgMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; };
+    go.onclick = async () => {
+      L.email = val('lgE').trim(); go.disabled = true; document.getElementById('lgMsg').innerHTML = '<div class="muted" style="margin-top:10px">Aguarde…</div>';
+      try {
+        if (L.passo === 'senha') entrar(await apiPost({ acao: 'auth_login', email: L.email, senha: val('lgS') }));
+        else if (L.passo === 'email') { const r = await apiPost({ acao: 'auth_codigo', email: L.email }); L.passo = 'codigo'; L.msg = `<div class="msg-ok" style="margin-top:12px">${esc(r.msg)}</div>`; tela(); }
+        else { if (val('lgS') !== val('lgS2')) throw new Error('As duas senhas não são iguais.'); entrar(await apiPost({ acao: 'auth_senha', email: L.email, codigo: val('lgC'), senha: val('lgS') })); }
+      } catch (e) { erro(e); }
+    };
+    app.querySelectorAll('input').forEach(i => i.addEventListener('keydown', ev => { if (ev.key === 'Enter') go.click(); }));
+    const f = document.getElementById(L.passo === 'codigo' ? 'lgC' : L.email ? 'lgS' : 'lgE'); if (f) f.focus();
+  };
+  tela();
+}
+
 /* ----- coordenador (?k=): vê a escala e manda os links, sem alterar nada ----- */
 const COORDG = new URLSearchParams(location.search).get('k') || '';
 const CG = { aba: 'ev', q: '', d: null };
@@ -1195,6 +1306,9 @@ function cgEnviar(link, titulo, texto) {
 }
 function cgDraw() {
   const D = CG.d, app = document.getElementById('app'), f = norm(CG.q);
+  const pode = x => !D.perms || D.perms.includes(x);
+  const abas = [pode('escala') && ['ev', '📋 Escala'], (pode('escala') || pode('agenda')) && ['eq', '👤 Equipe'], pode('agenda') && ['ag', '📅 Agenda da equipe'], pode('pendencias') && ['pe', '⚠ Pendências' + ((D.pendencias || []).length ? ` (${D.pendencias.length})` : '')]].filter(Boolean);
+  if (abas.length && !abas.some(a => a[0] === CG.aba)) CG.aba = abas[0][0];
   window.CGE = D.eventos; window.CGP = D.equipe;
   const evs = D.eventos.filter(e => !f || norm([e.nome, e.os, e.local, e.equipe.map(p => p.nome).join(' ')].join(' ')).includes(f));
   const atuais = evs.filter(e => e.endIso >= D.hoje), passados = evs.filter(e => e.endIso < D.hoje).reverse();
@@ -1208,15 +1322,19 @@ function cgDraw() {
   const pessoas = D.equipe.filter(p => !f || norm(p.nome).includes(f));
   app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Coordenação</h1><div class="sub">${esc(D.nome)} · escala e links</div></div></header>
     ${faixaTema()}
-    <div class="tabs" style="flex-wrap:wrap"><button class="btn ${CG.aba === 'ev' ? 'on' : ''}" onclick="CG.aba='ev';cgDraw()">📋 Eventos</button><button class="btn ${CG.aba === 'eq' ? 'on' : ''}" onclick="CG.aba='eq';cgDraw()">👤 Equipe</button></div>
-    <div class="card"><input id="cgQ" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:15px" placeholder="${CG.aba === 'ev' ? 'Buscar evento, OS, local ou técnico…' : 'Buscar técnico…'}" value="${esc(CG.q)}"></div>
-    ${CG.aba === 'ev' ? (atuais.map(card).join('') || '<div class="card muted">Nenhum evento em andamento ou futuro.</div>') + (passados.length ? `<div class="muted" style="font-size:11px;margin:14px 4px 6px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos 7 dias</div>${passados.map(card).join('')}` : '')
+    ${D.qr ? `<a class="btn pri big" style="width:100%;justify-content:center;text-decoration:none;color:#fff;margin-bottom:12px;box-sizing:border-box" href="${esc(D.qr)}">▣ QR Code e conferência dos horários</a>` : (pode('qr') ? '<div class="card muted" style="font-size:13px">▣ O QR Code aparece aqui quando você for responsável pelo ponto de algum evento.</div>' : '')}
+    <div class="tabs" style="flex-wrap:wrap">${abas.map(([k, l]) => `<button class="btn ${CG.aba === k ? 'on' : ''}" onclick="CG.aba='${k}';cgDraw()">${l}</button>`).join('')}</div>
+    ${CG.aba === 'ev' || CG.aba === 'eq' ? `<div class="card"><input id="cgQ" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:15px" placeholder="${CG.aba === 'ev' ? 'Buscar evento, OS, local ou técnico…' : 'Buscar técnico…'}" value="${esc(CG.q)}"></div>` : ''}
+    ${CG.aba === 'ag' ? ((D.agenda || []).map(d => `<div class="card"><b>${esc(d.diaFmt)}</b> <span class="muted" style="font-size:12px">${esc(diaSem(d.dia))}</span>${d.eventos.map(e => `<div class="prow" style="flex-wrap:wrap"><div style="flex-basis:100%"><b style="font-size:14px">${esc(e.evento)}</b><div class="muted" style="font-size:12px">${esc([e.os, e.local, e.fase].filter(Boolean).join(' · '))}</div><div style="font-size:13px;margin-top:4px">${e.pessoas.map(esc).join(' · ')}</div></div></div>`).join('')}</div>`).join('') || '<div class="card muted">Ninguém escalado nos próximos 30 dias.</div>')
+    : CG.aba === 'pe' ? `<div class="card">${(D.pendencias || []).map(x => x.tipo === 'falta' ? `<div class="prow"><div class="g"><b style="font-size:14px">⚠ Falta ${esc(x.role)} · ${esc(x.diaFmt)}</b><span class="muted" style="font-size:12px">${esc(x.evento)}${x.os ? ' · ' + esc(x.os) : ''}</span></div></div>`
+        : `<div class="prow" style="border-color:var(--red)"><div class="g"><b style="font-size:14px">⛔ Conflito · ${esc(x.nome)} · ${esc(x.diaFmt)}</b><span class="muted" style="font-size:12px">${x.eventos.map(esc).join(' e ')}</span></div></div>`).join('') || '<div class="muted">✅ Nenhuma pendência nos próximos 30 dias.</div>'}</div>`
+    : CG.aba === 'ev' ? (atuais.map(card).join('') || '<div class="card muted">Nenhum evento em andamento ou futuro.</div>') + (passados.length ? `<div class="muted" style="font-size:11px;margin:14px 4px 6px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos 7 dias</div>${passados.map(card).join('')}` : '')
       : `<div class="card">${pessoas.map(p => { const j = D.equipe.indexOf(p); return `<div class="prow"><div class="g"><b>${esc(p.nome)}</b></div>
         <button class="btn" onclick="cgEnviar(window.CGP[${j}].link,'Agenda · '+window.CGP[${j}].nome,'*Sua agenda individual · '+window.CGP[${j}].nome+'*\\nAqui você vê seus eventos e faz o check-in/check-out:')">📅 Enviar</button>
         <button class="btn" title="Copiar link" onclick="copiar(window.CGP[${j}].link)">📋</button></div>`; }).join('') || '<div class="muted">Ninguém encontrado.</div>'}</div>`}
     ${instalavel() ? '<button class="btn" style="width:100%;justify-content:center" onclick="instalarAgenda()">📲 Salvar na tela inicial</button>' : ''}
-    <div class="foot">Acesso só para ver a escala e enviar links. Este link é só seu: não compartilhe.</div>`;
-  const q = document.getElementById('cgQ'); q.oninput = () => { CG.q = q.value; const p = q.selectionStart; cgDraw(); const n = document.getElementById('cgQ'); n.focus(); n.setSelectionRange(p, p); };
+    <div class="foot">Acesso só para ver e enviar links, sem alterar a escala. Este acesso é só seu: não compartilhe.</div>`;
+  const q = document.getElementById('cgQ'); if (q) q.oninput = () => { CG.q = q.value; const p = q.selectionStart; cgDraw(); const n = document.getElementById('cgQ'); n.focus(); n.setSelectionRange(p, p); };
 }
 async function initCoordG() {
   document.title = 'Coordenação';
@@ -1386,14 +1504,17 @@ function iniciarChat() {
 if (CADR) {
   aplicarTema();
   initCadastro();
+} else if (SEMPARAM) {
+  aplicarTema();
+  initLogin();
 } else if (ADM) {
-  initAdm();
+  initAdm(); barraSessao();
 } else if (COORD) {
   aplicarTema();
   initCoord();
 } else if (COORDG) {
   aplicarTema();
-  initCoordG();
+  initCoordG(); barraSessao();
 } else if (EV) {
   aplicarTema();
   initEvento();
@@ -1401,6 +1522,7 @@ if (CADR) {
 } else {
   aplicarTema();
   iniciarChat();
+  barraSessao();
   refresh(true);
   loadPonto();
   setInterval(() => { if (!document.hidden) refresh(); }, 60000);
