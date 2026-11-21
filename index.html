@@ -782,6 +782,10 @@ async function admQrMasterNovo() {
   if (!confirm('Gerar um link master novo? O link atual para de funcionar na hora.')) return;
   try { const r = await admPost({ acao: 'adm_qrmaster_novo' }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (err) { alert(err.message || err); }
 }
+async function admCadDel(i) {
+  const c = window.ACAD[i]; if (!confirm('Cancelar o cadastro de ' + c.nome + '? O link para de funcionar' + (c.status === 'PREENCHIDO' ? ' (os dados já enviados continuam na planilha).' : '.'))) return;
+  try { const r = await admPost({ acao: 'adm_cad_del', id: c.id }); avisar(r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+}
 async function admCoordDel(i) {
   const c = window.ACG[i]; if (!confirm('Remover ' + c.nome + ' dos coordenadores? O link dele para de funcionar.')) return;
   try { const r = await admPost({ acao: 'adm_coord_del', id: c.id }); avisar(r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
@@ -793,7 +797,7 @@ async function admExcluir(r) {
 function admDraw() {
   const D = AD.d, app = document.getElementById('app');
   const nChat = AD.chat ? AD.chat.naoLidas : 0;
-  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '👥 Coordenadores'], ['conv', '📣 Convocação'], ['regra', 'Regra e locais']];
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['conv', '📣 Convocação'], ['regra', 'Regra e locais']];
   let body = '';
   if (AD.tab === 'chat') {
     const C = AD.chat || { conversas: [], msgs: [], ativo: true };
@@ -844,8 +848,21 @@ function admDraw() {
         <button class="btn" onclick="copiar(window.AL[${i}].link)">Copiar</button>
         <button class="btn pri" onclick="window.open('https://wa.me/?text='+encodeURIComponent('*Check-in / check-out · '+window.AL[${i}].nome+'*\\nFaça seu check-in ao chegar e o check-out ao sair:\\n'+window.AL[${i}].link),'_blank')">WhatsApp</button></div>`; }).join('') || '<div class="muted">Nenhum evento em andamento ou futuro.</div>'}</div>`;
   } else if (AD.tab === 'coordg') {
-    window.ACG = D.coordenadores || [];
-    body = `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">👥 Coordenadores</h3>
+    window.ACG = D.coordenadores || []; window.ACAD = D.cadastros || [];
+    const stCad = c => c.status === 'PREENCHIDO' ? `<span style="font-size:12px;color:var(--accent)">✅ preenchido ${esc(c.preenchido)}${c.funcao ? ' · ' + esc(c.funcao) : ''}${c.completo ? ' · ' + esc(c.completo) : ''}</span>` : `<span style="font-size:12px;color:var(--amber)">⏳ aguardando preenchimento · enviado ${esc(c.convidado)}</span>`;
+    body = `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">👤 Cadastrar técnico</h3>
+      <div class="muted" style="font-size:12px">Coloque o nome e o celular do técnico novo e mande o link pelo WhatsApp. Ele preenche função, nome completo, cachê, RG, CPF, CNPJ, nascimento, telefones, contato de emergência, PIX, e-mail e NRs. Ao enviar, os dados vão para a aba <b>CADASTRO TÉCNICOS</b> da planilha e você recebe um e-mail.</div>
+      <div class="pm" style="position:static;display:block;background:none;padding:0">
+        <label>Nome (como vai aparecer na escala)<input id="cdN" placeholder="Ex.: JOÃO PEDRO" autocapitalize="characters"></label>
+        <label>Celular (WhatsApp)<input id="cdW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
+      <div id="cdMsg"></div><button class="btn pri" style="margin-top:12px" id="cdGo">➕ Gerar link de cadastro</button>
+      ${window.ACAD.length ? `<div class="muted" style="font-size:11px;margin-top:16px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Cadastros</div>` : ''}
+      ${window.ACAD.map((c, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${esc(c.telFmt)}</span>${stCad(c)}</div>
+        <a class="btn ${c.status === 'PREENCHIDO' ? '' : 'pri'}" style="text-decoration:none;color:inherit" href="${esc(c.waLink)}" target="_blank" rel="noopener">📲 ${c.status === 'PREENCHIDO' ? 'Reenviar' : 'WhatsApp'}</a>
+        <button class="btn" onclick="copiar(window.ACAD[${i}].link)">Copiar link</button>
+        <button class="btn" onclick="admCadDel(${i})">🗑</button></div>`).join('')}</div>
+    <div class="card"><h3 style="margin:0 0 6px;font-size:15px">👥 Coordenadores</h3>
+      <div class="muted" style="font-size:12px;margin-bottom:6px">Lista de coordenadores (nome e celular). São eles que aparecem para escolher o responsável pelo QR Code e o coordenador de cada evento.</div>
       <div class="muted" style="font-size:12px">Cada coordenador recebe um link só dele: vê a escala de todos os eventos e manda o link de check-in do evento e a agenda individual de cada técnico. Não altera nada. Só você cadastra e envia esses links; remover desliga o link na hora.</div>
       ${window.ACG.map((c, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${c.wa ? esc(c.wa) + ' · ' : ''}desde ${esc(c.criado)}</span></div>
         <a class="btn pri" style="text-decoration:none" href="${esc(c.waLink)}" target="_blank" rel="noopener">📲 WhatsApp</a>
@@ -853,8 +870,8 @@ function admDraw() {
         <button class="btn" onclick="admCoordDel(${i})">🗑 Remover</button></div>`).join('') || '<div class="muted" style="font-size:13px;margin-top:8px">Nenhum coordenador ainda.</div>'}
       <div class="pm" style="position:static;display:block;background:none;padding:0">
         <label>Nome<input id="cgN" list="cgL" placeholder="Ex.: ERIC" autocapitalize="characters"><datalist id="cgL">${(D.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
-        <label>Celular (WhatsApp), opcional<input id="cgW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
-      <div id="cgMsg"></div><button class="btn pri" style="margin-top:12px" id="cgGo">➕ Cadastrar e gerar link</button></div>`;
+        <label>Celular (WhatsApp)<input id="cgW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
+      <div id="cgMsg"></div><button class="btn pri" style="margin-top:12px" id="cgGo">➕ Cadastrar coordenador</button></div>`;
   } else if (AD.tab === 'conv') {
     body = convHtml();
   } else if (AD.tab === 'escala') {
@@ -894,6 +911,11 @@ function admDraw() {
     const fq = document.getElementById('fQ'); fq.oninput = () => { AD.q = fq.value; const p = fq.selectionStart; admDraw(); const n = document.getElementById('fQ'); n.focus(); n.setSelectionRange(p, p); };
   }
   if (AD.tab === 'coordg') {
+    document.getElementById('cdGo').onclick = async () => {
+      try { const r = await admPost({ acao: 'adm_cad_novo', nome: document.getElementById('cdN').value, tel: document.getElementById('cdW').value });
+        avisar('✅ ' + r.msg); await admCarregar(); admDraw(); window.open(r.cad.waLink, '_blank'); }
+      catch (e) { document.getElementById('cdMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+    };
     const wa = {}; (D.equipeWa || []).forEach(x => { wa[norm(x.nome)] = x.wa; });
     document.getElementById('cgN').onchange = e => { const t = wa[norm(e.target.value)], f = document.getElementById('cgW'); if (t && !f.value) f.value = t; };
     document.getElementById('cgGo').onclick = async () => {
@@ -933,10 +955,12 @@ function admEvLocal(e) {
     <div class="muted" style="font-size:11px;margin-top:18px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">▣ Responsáveis pelo QR Code</div>
     <div id="vResps"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-      <label style="flex:1;min-width:150px">Nome<input id="vRN" list="dlEq" placeholder="Ex.: ERIC" autocapitalize="characters"></label>
+      <label style="flex:1;min-width:150px">Nome<input id="vRN" list="dlCo" placeholder="Escolha o coordenador" autocapitalize="characters"></label>
       <label style="flex:1;min-width:150px">Celular (WhatsApp)<input id="vRT" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label>
       <button class="btn pri" id="vRAdd">➕ Adicionar</button></div>
+    <datalist id="dlCo">${(AD.d.coordLista || []).map(c => `<option value="${esc(c.nome)}">`).join('')}</datalist>
     <datalist id="dlEq">${(AD.d.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+    <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:13px;color:var(--text);margin-top:6px"><input id="vTec" type="checkbox" style="width:auto;margin:0"> Adicionar técnico como coordenador (só neste evento)</label>
     <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vQr" type="checkbox" style="width:auto;margin:0" ${e.cfgQR ? 'checked' : ''}> Exigir QR Code do responsável (check-in e check-out)</label>
     <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vMot" type="checkbox" style="width:auto;margin:0" ${e.cfgMotorista ? 'checked' : ''}> 🚐 Permitir check-in de motorista neste evento</label>
     <div class="muted" style="font-size:12px;margin-top:4px">Quem dirige levando a equipe faz o check-in na saída, sem QR Code e sem conferir distância. O horário vai para o responsável confirmar.</div>
@@ -951,7 +975,8 @@ function admEvLocal(e) {
       <button class="btn" onclick="admRespDel(${i})">🗑</button></div>`).join('') || '<div class="muted" style="font-size:13px;margin-top:6px">Nenhum responsável ainda.</div>';
   };
   resps(e.resps || []);
-  const wa = {}; (AD.d.equipeWa || []).forEach(x => { wa[norm(x.nome)] = x.wa; });
+  const wa = {}; (AD.d.equipeWa || []).forEach(x => { wa[norm(x.nome)] = x.wa; }); (AD.d.coordLista || []).forEach(x => { if (x.wa) wa[norm(x.nome)] = x.wa; });
+  document.getElementById('vTec').onchange = ev => { const n = document.getElementById('vRN'); n.setAttribute('list', ev.target.checked ? 'dlEq' : 'dlCo'); n.placeholder = ev.target.checked ? 'Escolha o técnico' : 'Escolha o coordenador'; n.value = ''; n.focus(); };
   document.getElementById('vRN').onchange = ev => { const t = wa[norm(ev.target.value)], f = document.getElementById('vRT'); if (t && !f.value) f.value = t; };
   document.getElementById('vRAdd').onclick = async () => {
     const m = document.getElementById('vMsg'), q = document.getElementById('vQr');
@@ -1097,6 +1122,66 @@ async function initAdm() {
   catch (e) { document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; }
   document.getElementById('load').style.display = 'none';
   setInterval(() => { if (!document.hidden) admChatCarregar(); }, AD.tab === 'chat' ? 10000 : 20000);
+}
+
+/* ----- cadastro do técnico (?r=): link que a administração manda pelo WhatsApp ----- */
+const CADR = new URLSearchParams(location.search).get('r') || '';
+const soDig = s => String(s || '').replace(/\D/g, '');
+function mascara(el, tipo) {
+  el.addEventListener('input', () => {
+    let d = soDig(el.value);
+    if (tipo === 'cpf') { d = d.slice(0, 11); el.value = d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2'); }
+    if (tipo === 'cnpj') { d = d.slice(0, 14); el.value = d.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2'); }
+    if (tipo === 'tel') { d = d.slice(0, 11); el.value = d.length > 10 ? d.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3') : d.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3').replace(/[-(]\s*$/, ''); }
+  });
+}
+async function initCadastro() {
+  document.title = 'Cadastro do técnico';
+  const app = document.getElementById('app');
+  let D;
+  try { D = await apiGet({ f: 'cad', cd: CADR }); }
+  catch (err) { app.innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; document.getElementById('load').style.display = 'none'; return; }
+  document.getElementById('load').style.display = 'none';
+  const campo = (id, label, extra = '', obr = false) => `<label>${label}${obr ? ' <span style="color:var(--red)">*</span>' : ''}<input id="${id}" ${extra}></label>`;
+  const NRS = ['NR-06', 'NR-10', 'NR-11', 'NR-12', 'NR-18', 'NR-33', 'NR-35'];
+  app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Cadastro</h1><div class="sub">${esc(D.nome)} · dados para cadastro e pagamentos</div></div></header>
+    ${D.preenchido ? `<div class="card" style="border-color:var(--accent)"><b>✅ Você já enviou o cadastro em ${esc(D.preenchido)}.</b><div class="muted" style="font-size:13px">Se precisar corrigir, preencha de novo e envie: os dados novos substituem os anteriores.</div></div>` : ''}
+    <div class="card"><div class="muted" style="font-size:13px">Por favor, preencha seus dados. Eles ficam só com a administração e são usados para o seu cadastro e para os pagamentos. Campos com <span style="color:var(--red)">*</span> são obrigatórios.</div>
+      <div class="pm" style="position:static;display:block;background:none;padding:0">
+        <label>Função <span style="color:var(--red)">*</span><input id="fFun" list="dlFunC" placeholder="Ex.: LED, PPT, SOM…" autocapitalize="characters"><datalist id="dlFunC">${(D.funcoes || []).map(f => `<option value="${esc(f)}">`).join('')}</datalist></label>
+        ${campo('fNome', 'Nome completo', 'autocapitalize="words" autocomplete="name"', true)}
+        ${campo('fCache', 'Cachê (valor da diária)', 'inputmode="decimal" placeholder="Ex.: R$ 350,00"')}
+        ${campo('fRg', 'RG', 'inputmode="text"')}
+        ${campo('fCpf', 'CPF', 'inputmode="numeric" placeholder="000.000.000-00"', true)}
+        ${campo('fCnpj', 'CNPJ (se tiver)', 'inputmode="numeric" placeholder="00.000.000/0000-00"')}
+        ${campo('fNasc', 'Data de nascimento', 'type="date"', true)}
+        ${campo('fTel', 'Telefone (WhatsApp)', `type="tel" inputmode="tel" value="${esc(D.telFmt || '')}"`, true)}
+        ${campo('fTelE', 'Telefone de emergência', 'type="tel" inputmode="tel"')}
+        ${campo('fCont', 'Nome do contato de emergência', 'autocapitalize="words"')}
+        ${campo('fPix', 'PIX (chave)', 'placeholder="CPF, celular, e-mail ou chave aleatória"', true)}
+        ${campo('fMail', 'E-mail', 'type="email" inputmode="email" autocomplete="email"')}
+        <label>NRs (marque as que você tem)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${NRS.map(n => `<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-size:14px;color:var(--text);margin:0;border:1px solid var(--line);border-radius:999px;padding:6px 12px"><input type="checkbox" class="fNr" value="${n}" style="width:auto;margin:0">${n}</label>`).join('')}</div>
+        ${campo('fNrOut', 'Outras NRs / certificados', 'placeholder="Ex.: NR-20, brigada…"')}
+      </div>
+      <div id="fMsg"></div>
+      <button class="btn pri big" style="width:100%;justify-content:center;margin-top:14px" id="fGo">📨 Enviar cadastro</button></div>
+    <div class="foot">Seus dados são tratados com sigilo e usados só para cadastro e pagamento.</div>`;
+  mascara(document.getElementById('fCpf'), 'cpf'); mascara(document.getElementById('fCnpj'), 'cnpj');
+  mascara(document.getElementById('fTel'), 'tel'); mascara(document.getElementById('fTelE'), 'tel');
+  const val = id => document.getElementById(id).value;
+  document.getElementById('fGo').onclick = async () => {
+    const b = document.getElementById('fGo'), m = document.getElementById('fMsg');
+    const nrs = [...document.querySelectorAll('.fNr:checked')].map(x => x.value).concat(val('fNrOut') ? [val('fNrOut')] : []).join(', ');
+    b.disabled = true; m.innerHTML = '<div class="muted" style="margin-top:10px">Enviando…</div>';
+    try {
+      const r = await apiPost({ acao: 'cad_enviar', cd: CADR, dados: { funcao: val('fFun'), completo: val('fNome'), cache: val('fCache'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
+        nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), nrs } });
+      app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Cadastro</h1><div class="sub">${esc(D.nome)}</div></div></header>
+        <div class="card" style="border-color:var(--accent);text-align:center;padding:28px 18px"><div style="font-size:44px">✅</div><h2 style="margin:8px 0">Cadastro enviado!</h2><div class="muted">${esc(r.msg)}</div></div>`;
+      window.scrollTo(0, 0);
+    } catch (err) { b.disabled = false; m.innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
+  };
 }
 
 /* ----- coordenador (?k=): vê a escala e manda os links, sem alterar nada ----- */
@@ -1296,7 +1381,10 @@ function iniciarChat() {
   setInterval(() => { if (!document.hidden && (CH.aberto || Date.now() - CH.ult > 60000)) chatCarregar(); }, 10000);
 }
 
-if (ADM) {
+if (CADR) {
+  aplicarTema();
+  initCadastro();
+} else if (ADM) {
   initAdm();
 } else if (COORD) {
   aplicarTema();
