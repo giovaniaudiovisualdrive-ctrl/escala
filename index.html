@@ -951,6 +951,7 @@ function admDraw() {
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Totais ${AD.ev ? 'do evento' : ''} · ${regs.length} registro(s)</h3>
         ${Object.values(tot).sort((a, b) => a.n.localeCompare(b.n)).map(t => `<div class="prow"><div class="g"><b>${esc(t.n)}</b>${t.ab ? `<span style="color:var(--amber);font-size:12px">${t.ab} em aberto</span>` : ''}${t.cf ? `<span style="color:var(--amber);font-size:12px">${t.cf} aguardando conferência</span>` : ''}</div><div style="text-align:right;font-size:12px"><b>${t.d} diária${t.d !== 1 ? 's' : ''}</b><span class="muted">${fmtH(t.h)} · HE ${fmtH(t.e)}</span></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Registros</h3>
+        ${!regs.length && D.registros.length && (AD.ev || AD.q) ? `<div class="msg-ok" style="margin:6px 0">Nenhum registro com esse filtro (${D.registros.length} no total). <a href="#" onclick="AD.ev='';AD.q='';admDraw();return false" style="color:inherit;font-weight:700">Limpar filtro</a></div>` : ''}
         ${regs.map((r, i) => `<div class="prow" style="align-items:flex-start"><div class="g"><b>${esc(r.nome)}</b><span class="muted" style="font-size:12px">${esc(r.evento)} · ${esc(r.origem || '')}</span>
           <div style="font-size:13px;margin-top:4px">${esc(r.in)} ${mapa(r.locIn)} → ${r.out ? esc(r.out) + ' ' + mapa(r.locOut) : '<b style="color:var(--amber)">sem saída</b>'}${r.dist !== '' && r.dist != null ? ` <span class="muted">(${r.dist} m do local)</span>` : ''}</div>
           ${r.calc ? `<div style="font-size:12px;margin-top:2px"><b>${r.calc.diarias} diária${r.calc.diarias > 1 ? 's' : ''}</b> · ${fmtH(r.calc.horas)} · HE ${fmtH(r.calc.extra)}</div>` : ''}
@@ -1005,7 +1006,7 @@ function admDraw() {
         ${u.temSenha ? `<button class="btn" onclick="acsAcao('adm_acesso_reset',${i})" title="Apaga a senha: no próximo acesso a pessoa cria outra pelo código no e-mail">🔑 Zerar senha</button>` : ''}
         ${u.email !== D.emailPrincipal ? `<button class="btn" onclick="acsAcao('adm_acesso_del',${i})">🗑</button>` : ''}</div>`; };
     body = `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">${E ? '✏️ Editar acesso' : '➕ Novo acesso'}</h3>
-      <div class="muted" style="font-size:12px">Cada pessoa entra no app (e no Controle) com o próprio e-mail e uma senha que ela mesma cria. <b>Administrador</b> vê tudo, como você. <b>Coordenador</b> vê só as partes que você marcar. <b>Técnico</b> vê só a agenda individual dele, com o relatório de horas.</div>
+      <div class="muted" style="font-size:12px">Cada pessoa entra no app (e no Controle) com o próprio e-mail e uma senha que ela mesma cria. <b>Administrador</b> vê tudo, como você. <b>Coordenador</b> vê só as partes que você marcar (e sempre pode mandar o link de cadastro para técnico novo). <b>Técnico</b> vê só a agenda individual dele, com o relatório de horas.</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0">
         <label>E-mail<input id="acE" type="email" inputmode="email" value="${esc(F.email || '')}" ${E ? 'readonly style="opacity:.7"' : ''} placeholder="nome@empresa.com"></label>
         <label>Nome<input id="acN" value="${esc(F.nome || '')}" placeholder="Ex.: ANA" autocapitalize="characters"></label>
@@ -1084,7 +1085,9 @@ function admDraw() {
       <div class="pm" style="position:static;display:block;background:none;padding:0"><label>Horas de uma diária<input id="rB" type="number" step="0.5" value="${c.base}"></label>
       <label>Hora extra máxima antes da dobra (horas, ex.: 5.5 = 5h30)<input id="rL" type="number" step="0.25" value="${c.limite}"></label>
       <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="rX" type="checkbox" style="width:auto;margin:0" ${c.exigirLocal ? 'checked' : ''}> Exigir localização no check-in em todos os eventos (dentro do raio do local, quando ele estiver cadastrado)</label>
-      <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="rC" type="checkbox" style="width:auto;margin:0" ${c.chat !== false ? 'checked' : ''}> 💬 Chat de atendimento ativo nos links dos técnicos</label></div>
+      <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="rC" type="checkbox" style="width:auto;margin:0" ${c.chat !== false ? 'checked' : ''}> 💬 Chat de atendimento ativo nos links dos técnicos</label>
+      <label>Prazo para registrar ou corrigir horário e usar o QR Code depois do evento<select id="rP">${[[36, '36 horas'], [48, '48 horas'], [72, '3 dias'], [168, '7 dias (padrão)'], [360, '15 dias'], [720, '30 dias'], [0, 'Sem limite']].map(([v, l]) => `<option value="${v}" ${(c.prazoH == null ? 168 : c.prazoH) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <div class="muted" style="font-size:12px;margin-top:4px">Vale para o técnico informar um horário diferente de agora, para corrigir um horário pedido pelo responsável e para o QR Code e a conferência de eventos que já acabaram. A administração lança qualquer data em Registros → ➕ Lançar registro.</div></div>
       <button class="btn pri" style="margin-top:12px" id="rGo">Salvar regra</button></div>
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Locais (endereço e raio)</h3>
       <div class="muted" style="font-size:12px">O nome precisa ser igual ao LOCAL que aparece no evento (ex.: BTT). O endereço vira coordenada sozinho.</div>
@@ -1097,6 +1100,7 @@ function admDraw() {
   }
   app.style.maxWidth = '980px';
   app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Administração do ponto</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
+    ${AD.velho ? '<div id="admVelho" class="muted" style="font-size:12px;margin:0 0 10px">⟳ Atualizando com os dados mais novos…</div>' : ''}
     ${nCont && AD.tab !== 'cont' ? `<div class="card" style="border-color:var(--amber);cursor:pointer;padding:12px 16px" onclick="AD.tab='cont';admDraw()"><b>💰 ${nCont} ${nCont > 1 ? 'contestações' : 'contestação'} de diárias aguardando resposta</b> <span class="muted" style="font-size:12px">· toque para ver</span></div>` : ''}
     <div class="tabs" style="flex-wrap:wrap">${tabs.map(([k, l]) => `<button class="btn ${AD.tab === k ? 'on' : ''}" onclick="AD.tab='${k}';${k === 'conv' ? 'CVS.d=null;' : ''}admDraw()">${l}</button>`).join('')}</div>${body}
     <div class="foot">Acesso só ao ponto. Para mudar a escala, fale com a coordenação.</div>`;
@@ -1152,7 +1156,7 @@ function admDraw() {
   }
   if (AD.tab === 'regra') {
     document.getElementById('rGo').onclick = async () => {
-      try { await admPost({ acao: 'adm_regra', base: document.getElementById('rB').value, limite: document.getElementById('rL').value, exigir: document.getElementById('rX').checked, chat: document.getElementById('rC').checked }); avisar('✅ Regra salva.'); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+      try { await admPost({ acao: 'adm_regra', base: document.getElementById('rB').value, limite: document.getElementById('rL').value, exigir: document.getElementById('rX').checked, chat: document.getElementById('rC').checked, prazoH: document.getElementById('rP').value }); avisar('✅ Regra salva.'); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
     };
     document.getElementById('lGo').onclick = async () => {
       const m = document.getElementById('lMsg'); m.innerHTML = '<div class="muted" style="margin-top:8px">Procurando o endereço no mapa…</div>';
@@ -1335,13 +1339,14 @@ async function convTel(ei, pi) {
 async function initAdm() {
   document.title = 'Administração do ponto';
   const ck = 'bt_cache_adm_' + ADM.slice(-8);
-  try { const c = JSON.parse(lsGet(ck) || 'null'); if (c && c.cfg) { AD.d = c; admDraw(); document.getElementById('load').style.display = 'none'; } } catch (e) { /* sem cache */ }
+  try { const c = JSON.parse(lsGet(ck) || 'null'); if (c && c.cfg) { AD.d = c; AD.velho = true; admDraw(); document.getElementById('load').style.display = 'none'; } } catch (e) { /* sem cache */ }
   try {
     const velho = AD.d ? JSON.stringify(AD.d) : '';
     await admCarregar();
     const novo = JSON.stringify(AD.d); try { localStorage.setItem(ck, novo); } catch (e) { /* cheio: ignora */ }
     const digitando = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
-    if (novo !== velho && !digitando) admDraw();
+    AD.velho = false;
+    if ((novo !== velho || velho) && !digitando) admDraw(); else { const v = document.getElementById('admVelho'); if (v) v.remove(); }
     admChatCarregar();
   }
   catch (e) { if (!AD.d) document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; }
@@ -1494,10 +1499,19 @@ function cgEnviar(link, titulo, texto) {
   if (navigator.share) navigator.share({ title: titulo, text: texto, url: link }).catch(() => {});
   else window.open('https://wa.me/?text=' + encodeURIComponent(texto + '\n' + link), '_blank');
 }
+async function cgCadNovo() {
+  const n = document.getElementById('cgcN').value, w = document.getElementById('cgcW').value, m = document.getElementById('cgcMsg');
+  const win = window.open('', '_blank');
+  try {
+    const r = await apiPost({ acao: 'coord_cad_novo', k: COORDG, nome: n, tel: w });
+    if (win) win.location.href = r.cad.waLink; else window.open(r.cad.waLink, '_blank');
+    avisar('✅ ' + r.msg); CG.d.cadastros = [r.cad].concat(CG.d.cadastros || []); cgDraw();
+  } catch (e) { if (win) win.close(); m.innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+}
 function cgDraw() {
   const D = CG.d, app = document.getElementById('app'), f = norm(CG.q);
   const pode = x => !D.perms || D.perms.includes(x);
-  const abas = [pode('escala') && ['ev', '📋 Escala'], (pode('escala') || pode('agenda')) && ['eq', '👤 Equipe'], pode('agenda') && ['ag', '📅 Agenda da equipe'], pode('pendencias') && ['pe', '⚠ Pendências' + ((D.pendencias || []).length ? ` (${D.pendencias.length})` : '')]].filter(Boolean);
+  const abas = [pode('escala') && ['ev', '📋 Escala'], (pode('escala') || pode('agenda')) && ['eq', '👤 Equipe'], pode('agenda') && ['ag', '📅 Agenda da equipe'], pode('pendencias') && ['pe', '⚠ Pendências' + ((D.pendencias || []).length ? ` (${D.pendencias.length})` : '')], D.cadastros && ['cad', '👤 Cadastrar técnico']].filter(Boolean);
   if (abas.length && !abas.some(a => a[0] === CG.aba)) CG.aba = abas[0][0];
   window.CGE = D.eventos; window.CGP = D.equipe;
   const evs = D.eventos.filter(e => !f || norm([e.nome, e.os, e.local, e.equipe.map(p => p.nome).join(' ')].join(' ')).includes(f));
@@ -1516,6 +1530,17 @@ function cgDraw() {
     <div class="tabs" style="flex-wrap:wrap">${abas.map(([k, l]) => `<button class="btn ${CG.aba === k ? 'on' : ''}" onclick="CG.aba='${k}';cgDraw()">${l}</button>`).join('')}</div>
     ${CG.aba === 'ev' || CG.aba === 'eq' ? `<div class="card"><input id="cgQ" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:15px" placeholder="${CG.aba === 'ev' ? 'Buscar evento, OS, local ou técnico…' : 'Buscar técnico…'}" value="${esc(CG.q)}"></div>` : ''}
     ${CG.aba === 'ag' ? ((D.agenda || []).map(d => `<div class="card"><b>${esc(d.diaFmt)}</b> <span class="muted" style="font-size:12px">${esc(diaSem(d.dia))}</span>${d.eventos.map(e => `<div class="prow" style="flex-wrap:wrap"><div style="flex-basis:100%"><b style="font-size:14px">${esc(e.evento)}</b><div class="muted" style="font-size:12px">${esc([e.os, e.local, e.fase].filter(Boolean).join(' · '))}</div><div style="font-size:13px;margin-top:4px">${e.pessoas.map(esc).join(' · ')}</div></div></div>`).join('')}</div>`).join('') || '<div class="card muted">Ninguém escalado nos próximos 30 dias.</div>')
+    : CG.aba === 'cad' ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">👤 Cadastrar técnico novo</h3>
+      <div class="muted" style="font-size:12px">Coloque o nome e o celular e mande o link pelo WhatsApp. O técnico preenche função e valor combinado, documentos, PIX e contato de emergência. A administração recebe um aviso.</div>
+      <div class="pm" style="position:static;display:block;background:none;padding:0">
+        <label>Nome (como vai aparecer na escala)<input id="cgcN" autocapitalize="characters" placeholder="Ex.: JOÃO PEDRO"></label>
+        <label>Celular (WhatsApp)<input id="cgcW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
+      <div id="cgcMsg"></div><button class="btn pri" style="margin-top:12px" onclick="cgCadNovo()">➕ Gerar link de cadastro</button>
+      ${(D.cadastros || []).length ? `<div class="muted" style="font-size:11px;margin-top:16px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Links que você mandou</div>` : ''}
+      ${(D.cadastros || []).map((c, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${esc(c.telFmt)}</span>
+        <span style="font-size:12px;color:${c.status === 'PREENCHIDO' ? 'var(--accent)' : 'var(--amber)'}">${c.status === 'PREENCHIDO' ? '✅ preenchido ' + esc(c.preenchido) : '⏳ aguardando preenchimento'}</span></div>
+        <a class="btn ${c.status === 'PREENCHIDO' ? '' : 'pri'}" style="text-decoration:none;color:inherit" href="${esc(c.waLink)}" target="_blank" rel="noopener">📲 WhatsApp</a>
+        <button class="btn" onclick="copiar(CG.d.cadastros[${i}].link)">Copiar link</button></div>`).join('')}</div>`
     : CG.aba === 'pe' ? `<div class="card">${(D.pendencias || []).map(x => x.tipo === 'falta' ? `<div class="prow"><div class="g"><b style="font-size:14px">⚠ Falta ${esc(x.role)} · ${esc(x.diaFmt)}</b><span class="muted" style="font-size:12px">${esc(x.evento)}${x.os ? ' · ' + esc(x.os) : ''}</span></div></div>`
         : `<div class="prow" style="border-color:var(--red)"><div class="g"><b style="font-size:14px">⛔ Conflito · ${esc(x.nome)} · ${esc(x.diaFmt)}</b><span class="muted" style="font-size:12px">${x.eventos.map(esc).join(' e ')}</span></div></div>`).join('') || '<div class="muted">✅ Nenhuma pendência nos próximos 30 dias.</div>'}</div>`
     : CG.aba === 'ev' ? (atuais.map(card).join('') || '<div class="card muted">Nenhum evento em andamento ou futuro.</div>') + (passados.length ? `<div class="muted" style="font-size:11px;margin:14px 4px 6px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos 7 dias</div>${passados.map(card).join('')}` : '')
