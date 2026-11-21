@@ -1109,6 +1109,8 @@ function vCreate() {
     <div class="field"><label>Início</label><input class="ctl" type="date" id="cStart" value="${esc(C.start)}"></div>
     <div class="field"><label>Fim</label><input class="ctl" type="date" id="cEnd" value="${esc(C.end)}"></div></div>
     ${outMonth ? `<div class="row" style="background:var(--amberSoft);border-color:transparent"><span style="color:var(--amber)">A data não é de ${MESES[D.month]} ${D.year}. Troque a aba no topo para o mês certo.</span></div>` : ''}
+    <div class="field"><label>Coordenador(es) do evento</label><input class="ctl" id="cCoord" list="dlTeamC" value="${esc(C.coord || '')}" placeholder="Ex.: ERIK / LUANDSON" autocomplete="off"><datalist id="dlTeamC">${D.team.map(m => `<option value="${esc(m.name)}">`).join('')}</datalist>
+      <div class="dim" style="font-size:11px;margin-top:4px">Entra na linha COORDENADOR em todos os dias do evento. Mais de um: separe com /</div></div>
     <div class="field"><label>Operação de cada dia</label>${phRows ? `<div class="phgrid" id="cPh">${phRows}</div>` : '<div class="empty">Escolha as datas para definir a operação de cada dia.</div>'}</div>
     <div><button class="btn pri" id="cGo" ${!sd ? 'disabled' : ''}>✓ Criar evento na planilha</button></div>
   </div></div>
@@ -1122,14 +1124,14 @@ function vCreate() {
     }).join('')}</div>` : ''}
   </div></div>`;
   const bind = (id, k) => { const el = $('#' + id); el.oninput = () => { C[k] = el.value; }; };
-  bind('cNome', 'nome'); bind('cOs', 'os'); bind('cLocal', 'local');
+  bind('cNome', 'nome'); bind('cOs', 'os'); bind('cLocal', 'local'); bind('cCoord', 'coord');
   $('#cLista').onchange = ev => C.lista = ev.target.value;
   const dates = () => { C.start = $('#cStart').value; C.end = $('#cEnd').value || C.start; if (C.end < C.start) C.end = C.start; C.phases = defaultPhases(dayOfIso(C.start), dayOfIso(C.end)); render(); };
   $('#cStart').onchange = dates; $('#cEnd').onchange = dates;
   if ($('#cPh')) $('#cPh').onchange = ev => { C.phases[ev.target.dataset.d] = ev.target.value; render(); };
   $('#cGo').onclick = async () => {
     if (!C.nome.trim()) return toast('Informe o nome do evento.', true);
-    const r = await run('criarEvento', [{ sheet: S.sheet, nome: C.nome, os: C.os, local: C.local, lista: C.lista, start: C.start, end: C.end, phases: C.phases }]);
+    const r = await run('criarEvento', [{ sheet: S.sheet, nome: C.nome, os: C.os, local: C.local, lista: C.lista, start: C.start, end: C.end, phases: C.phases, coord: C.coord || '' }]);
     toast(`✅ Evento criado na linha ${r.row}.`); S.create = null; await load(); const ne = S.data.events.find(e => e.row === r.row); if (ne) { S.assign.row = ne.row; S.assign.days = ne.activeDays.slice(); go('assign'); }
   };
 }
