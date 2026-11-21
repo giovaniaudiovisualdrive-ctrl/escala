@@ -772,6 +772,16 @@ function admEditar(r) {
     catch (e) { document.getElementById('aMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
   };
 }
+async function admEvDias(i, ini, fim) {
+  const e = window.AES[i];
+  const txt = ini ? (ini < 0 ? 'começar 1 dia ANTES' : 'começar 1 dia DEPOIS') : (fim < 0 ? 'terminar 1 dia ANTES' : 'terminar 1 dia DEPOIS');
+  if (!confirm(e.nome + ' (' + e.start + (e.end !== e.start ? ' a ' + e.end : '') + '): ' + txt + '?')) return;
+  try { const r = await admPost({ acao: 'adm_ev_dias', key: e.key, ini, fim }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (err) { alert(err.message || err); }
+}
+async function admQrMasterNovo() {
+  if (!confirm('Gerar um link master novo? O link atual para de funcionar na hora.')) return;
+  try { const r = await admPost({ acao: 'adm_qrmaster_novo' }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (err) { alert(err.message || err); }
+}
 async function admCoordDel(i) {
   const c = window.ACG[i]; if (!confirm('Remover ' + c.nome + ' dos coordenadores? O link dele para de funcionar.')) return;
   try { const r = await admPost({ acao: 'adm_coord_del', id: c.id }); avisar(r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
@@ -817,7 +827,11 @@ function admDraw() {
           <div style="display:flex;flex-direction:column;gap:6px"><button class="btn" onclick="admEditar(window.AR[${i}])">✎</button><button class="btn" onclick="admExcluir(window.AR[${i}])">🗑</button></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>`;
   } else if (AD.tab === 'links') {
     window.AL = D.eventos;
-    body = `<div class="card"><div class="muted" style="font-size:13px">Mande o link no grupo do evento. Qualquer pessoa (freelancer ou fixo) faz check-in e check-out com o nome.</div>
+    body = (D.qrMaster ? `<div class="card" style="border-color:var(--amber)"><h3 style="margin:0 0 4px;font-size:15px">🔑 QR Code master</h3>
+      <div class="muted" style="font-size:12px">Só da administração. Mostra o QR Code de qualquer evento (inclusive os que acabaram e ainda têm gente sem check-out) e confere os horários. Use quando o responsável não estiver com o celular. Não mande para técnicos.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><a class="btn pri" style="text-decoration:none" href="${esc(D.qrMaster)}" target="_blank" rel="noopener">▣ Abrir QR master</a>
+      <button class="btn" onclick="copiar(AD.d.qrMaster)">Copiar link</button><button class="btn" onclick="admQrMasterNovo()">↻ Gerar novo (desliga o atual)</button></div></div>` : '') +
+      `<div class="card"><div class="muted" style="font-size:13px">Mande o link no grupo do evento. Qualquer pessoa (freelancer ou fixo) faz check-in e check-out com o nome.</div>
       ${D.eventos.filter(e => e.endIso >= D.hoje).map((e, i0) => { const i = D.eventos.indexOf(e); return `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(e.nome)}</b><span class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.os)}</span>
           <span style="font-size:11px;${e.cfgExigir ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgExigir ? '📍 exige localização' : '📍 localização opcional'}${e.cfgEndereco ? ' · ' + esc(e.cfgEndereco) + ' (' + e.cfgRaio + ' m)' : ''}</span>
           <span style="font-size:11px;${e.cfgQR ? 'color:var(--accent)' : 'color:var(--dim)'}">${e.cfgQR ? '▣ QR Code' : '▣ sem QR Code'}${e.resps.length ? ' · responsável: ' + esc(e.resps.map(r => r.nome).join(', ')) : ''}${e.cfgMotorista ? ' · 🚐 motorista' : ''}</span>
@@ -844,9 +858,14 @@ function admDraw() {
   } else if (AD.tab === 'conv') {
     body = convHtml();
   } else if (AD.tab === 'escala') {
-    body = D.eventos.map(e => `<div class="card"><b>${esc(e.nome)}</b> <span class="muted" style="font-size:12px">${esc(e.os)}</span>
+    window.AES = D.eventos;
+    const db = (i, ini, fim, t) => `<button class="btn" style="padding:7px 10px;font-size:12px" onclick="admEvDias(${i},${ini},${fim})">${t}</button>`;
+    body = `<div class="card muted" style="font-size:12px">Mudou a data de um evento? Use os botões de cada evento: tira ou põe um dia no começo ou no fim. A planilha é atualizada e o link de check-in, os responsáveis e os registros continuam ligados ao evento.</div>` +
+      (D.eventos.map((e, i) => `<div class="card"><b>${esc(e.nome)}</b> <span class="muted" style="font-size:12px">${esc(e.os)}</span>
       <div class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''} · ${esc(e.local)} · ${esc(e.status || '')}</div>
-      <div class="chips">${(e.pessoas || []).map(p => `<span class="chip">${esc(p)}</span>`).join('') || '<span class="muted" style="font-size:12px">Sem equipe na escala.</span>'}</div></div>`).join('') || '<div class="card muted">Nenhum evento.</div>';
+      <div class="chips">${(e.pessoas || []).map(p => `<span class="chip">${esc(p)}</span>`).join('') || '<span class="muted" style="font-size:12px">Sem equipe na escala.</span>'}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px"><span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Início</span>${db(i, -1, 0, '◀ 1 dia antes')}${db(i, 1, 0, '1 dia depois ▶')}
+        <span class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-left:8px">Fim</span>${db(i, 0, -1, '◀ 1 dia antes')}${db(i, 0, 1, '1 dia depois ▶')}</div></div>`).join('') || '<div class="card muted">Nenhum evento.</div>');
   } else {
     const c = D.cfg; window.ALC = D.locais;
     const nomesLocais = [...new Set(D.eventos.map(e => e.local).filter(Boolean))].sort();
