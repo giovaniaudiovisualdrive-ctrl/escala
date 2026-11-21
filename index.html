@@ -587,7 +587,7 @@ function abrirPonto(o) {
     ${o.acao === 'checkout' && o.abertos && o.abertos.length ? `<label>Seu check-in<select id="pAb"><option value="">Selecione seu nome…</option>${o.abertos.map(a => `<option value="${esc(a.id)}" ${a.id === o.id ? 'selected' : ''}>${esc(a.nome)} · entrada ${esc(a.in)}</option>`).join('')}<option value="__outro">Meu nome não está na lista</option></select></label>` : ''}
     ${o.pedirNome ? `<label id="pNomeL" ${o.acao === 'checkout' && o.abertos && o.abertos.length ? 'style="display:none"' : ''}>Seu nome completo<input id="pNome" value="${esc(o.nome || lsGet('ponto_nome') || '')}" autocomplete="name" placeholder="Ex.: JOÃO DA SILVA"></label>` : ''}
     ${o.acao === 'checkin' ? `<label>Sua função<input id="pRole" list="dlFun" value="${esc(o.role || lsGet('ponto_funcao') || '')}" placeholder="Ex.: LED, PPT, VMIX, APOIO" autocapitalize="characters"></label>
-      <datalist id="dlFun">${['PPT', 'RESOLUME', 'VMIX', 'APOIO', 'OPERADOR CAMERA', 'LED', 'TV E APOIO', 'SOM', 'LUZ', 'ASSISTENTE TÉCNICO', 'COORDENADOR', 'MONTADOR'].map(x => `<option value="${x}">`).join('')}</datalist>` : ''}
+      <datalist id="dlFun">${['COORDENADOR', 'PPT', 'RESOLUME', 'PROCESSAMENTO', 'PROCESSAMENTO/RESOLUME', 'VMIX', 'ZOOM/TEAMS/G.MEET', 'MEDIA DESK', 'SOM', 'MICROFONISTA', 'ROADIE', 'TÉCNICO AV (ÁUDIO E VÍDEO)', 'ASSIST. TÉCNICO SOM', 'LUZ', 'ASSIST. TÉCNICO LUZ', 'MONTADOR DE PALCO', 'CARREGADOR', 'APOIO', 'OPERADOR CAMERA', 'LED', 'TV E APOIO', 'ASSISTENTE TÉCNICO'].map(x => `<option value="${x}">`).join('')}</datalist>` : ''}
     ${o.motorista ? '<div class="qrok" style="margin:12px 0 0;background:rgba(245,184,61,.15);color:var(--amber)">Use quando você estiver dirigindo a trabalho, levando a equipe. Não precisa de QR Code.</div>' : ''}
     <label>${o.motorista ? 'Horário em que você saiu dirigindo' : 'Horário' + (o.passe ? ' em que você ' + (o.acao === 'checkin' ? 'chegou' : 'saiu') : '')}<input id="pHora" type="datetime-local" value="${nowLocal()}"></label>
     ${o.motorista ? '<div class="muted" style="font-size:12px;margin-top:6px">O horário vai para o responsável do evento confirmar. Depois de confirmado, suas horas contam a partir dele. No local, você não precisa fazer outro check-in.</div>' : ''}
@@ -1148,7 +1148,8 @@ async function initCadastro() {
     ${D.preenchido ? `<div class="card" style="border-color:var(--accent)"><b>✅ Você já enviou o cadastro em ${esc(D.preenchido)}.</b><div class="muted" style="font-size:13px">Se precisar corrigir, preencha de novo e envie: os dados novos substituem os anteriores.</div></div>` : ''}
     <div class="card"><div class="muted" style="font-size:13px">Por favor, preencha seus dados. Eles ficam só com a administração e são usados para o seu cadastro e para os pagamentos. Campos com <span style="color:var(--red)">*</span> são obrigatórios.</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0">
-        <label>Função <span style="color:var(--red)">*</span><input id="fFun" list="dlFunC" placeholder="Ex.: LED, PPT, SOM…" autocapitalize="characters"><datalist id="dlFunC">${(D.funcoes || []).map(f => `<option value="${esc(f)}">`).join('')}</datalist></label>
+        <label>Função <span style="color:var(--red)">*</span><select id="fFun"><option value="">Escolha a sua função…</option>${(D.funcoes || []).map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}<option value="OUTRA">OUTRA</option></select></label>
+        <label id="fFunOutL" style="display:none">Descreva a sua função <span style="color:var(--red)">*</span><input id="fFunOut" placeholder="Ex.: operador de teleprompter" autocapitalize="characters"></label>
         ${campo('fNome', 'Nome completo', 'autocapitalize="words" autocomplete="name"', true)}
         ${campo('fCache', 'Cachê (valor da diária)', 'inputmode="decimal" placeholder="Ex.: R$ 350,00"')}
         ${campo('fRg', 'RG', 'inputmode="text"')}
@@ -1167,6 +1168,7 @@ async function initCadastro() {
       <div id="fMsg"></div>
       <button class="btn pri big" style="width:100%;justify-content:center;margin-top:14px" id="fGo">📨 Enviar cadastro</button></div>
     <div class="foot">Seus dados são tratados com sigilo e usados só para cadastro e pagamento.</div>`;
+  document.getElementById('fFun').onchange = ev => { const o = ev.target.value === 'OUTRA'; document.getElementById('fFunOutL').style.display = o ? '' : 'none'; if (o) document.getElementById('fFunOut').focus(); };
   mascara(document.getElementById('fCpf'), 'cpf'); mascara(document.getElementById('fCnpj'), 'cnpj');
   mascara(document.getElementById('fTel'), 'tel'); mascara(document.getElementById('fTelE'), 'tel');
   const val = id => document.getElementById(id).value;
@@ -1175,7 +1177,7 @@ async function initCadastro() {
     const nrs = [...document.querySelectorAll('.fNr:checked')].map(x => x.value).concat(val('fNrOut') ? [val('fNrOut')] : []).join(', ');
     b.disabled = true; m.innerHTML = '<div class="muted" style="margin-top:10px">Enviando…</div>';
     try {
-      const r = await apiPost({ acao: 'cad_enviar', cd: CADR, dados: { funcao: val('fFun'), completo: val('fNome'), cache: val('fCache'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
+      const r = await apiPost({ acao: 'cad_enviar', cd: CADR, dados: { funcao: val('fFun'), funcaoOutra: val('fFunOut'), completo: val('fNome'), cache: val('fCache'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
         nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), nrs } });
       app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Cadastro</h1><div class="sub">${esc(D.nome)}</div></div></header>
         <div class="card" style="border-color:var(--accent);text-align:center;padding:28px 18px"><div style="font-size:44px">✅</div><h2 style="margin:8px 0">Cadastro enviado!</h2><div class="muted">${esc(r.msg)}</div></div>`;
