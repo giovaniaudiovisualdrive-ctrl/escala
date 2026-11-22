@@ -118,6 +118,16 @@ body{background:var(--bg)}
 .qrbar{height:6px;border-radius:6px;background:var(--panel2);overflow:hidden;margin:6px 0}.qrbar i{display:block;height:100%;width:100%;background:var(--accent);transition:width 1s linear}
 .nb{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--amber);color:#111;font-size:12px;font-weight:800;text-align:center;margin-left:4px}
 .qrok{margin-bottom:14px;padding:10px 12px;border-radius:10px;background:rgba(31,191,117,.15);color:var(--ok);font-weight:600;font-size:13px}
+/* ---------- tema claro / automático (Configurações → Aparência) ---------- */
+:root[data-modo="claro"]{--bg:#f3f6f9;--panel:#ffffff;--panel2:#eef2f6;--line:#dbe2ea;--text:#17212c;--muted:#5a6879;--dim:#8a96a4;--amber:#b26e00;--ok:#18834a;--red:#c3352b;color-scheme:light}
+@media (prefers-color-scheme: light){:root[data-modo="auto"]{--bg:#f3f6f9;--panel:#ffffff;--panel2:#eef2f6;--line:#dbe2ea;--text:#17212c;--muted:#5a6879;--dim:#8a96a4;--amber:#b26e00;--ok:#18834a;--red:#c3352b;color-scheme:light}}
+:root[data-modo="claro"] .load .chao{background:radial-gradient(closest-side,rgba(0,0,0,.18),rgba(0,0,0,0))}
+:root[data-semtema] .tema-bg span{display:none}
+.logo img.vis{background:none;padding:0;object-fit:cover}
+.swatch{width:34px;height:34px;border-radius:50%;border:3px solid transparent;cursor:pointer;padding:0}
+.swatch.on{border-color:var(--text)}
+.icoprev{width:72px;height:72px;border-radius:16px;background:var(--panel2);display:grid;place-items:center;overflow:hidden;border:1px solid var(--line);flex:none}
+.icoprev img{width:100%;height:100%;object-fit:cover}
 </style>
 </head>
 <body>
@@ -129,8 +139,36 @@ body{background:var(--bg)}
 <script>
 // Página pública (GitHub Pages). Lê os dados da planilha pelo App da Web, sem usar conta Google.
 const API = 'https://script.google.com/macros/s/AKfycbzC4SQUnbGNWFK7xlj0xUKbmoMuGYWDN-8AExukFuHmepDC1JiEgVLS3FiH1KIrv9to/exec';
+/* ---------- aparência (nome, ícone e tema), mudada pela ADM em ⚙ Configurações ---------- */
+const VIS_PADRAO = { nome: 'Escala Técnica', sub: 'base técnica · vídeo', tema: 'escuro', cor: '#c8161d', temaMes: true, icone: '', v: '' };
+let VIS = (() => { try { return Object.assign({}, VIS_PADRAO, JSON.parse(localStorage.getItem('bt_visual') || '{}')); } catch (e) { return Object.assign({}, VIS_PADRAO); } })();
+const escV = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function corEscura(hex, f) { const n = parseInt(hex.slice(1), 16); const c = x => Math.max(0, Math.round(x * (f || 0.78))).toString(16).padStart(2, '0'); return '#' + c(n >> 16) + c((n >> 8) & 255) + c(n & 255); }
+function logoHtml() { return VIS.icone ? `<div class="logo"><img class="vis" src="${VIS.icone}" alt=""></div>` : '<div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div>'; }
+function aplicarVisual() {
+  const r = document.documentElement;
+  r.dataset.modo = VIS.tema || 'escuro';
+  r.style.setProperty('--accent', VIS.cor || VIS_PADRAO.cor); r.style.setProperty('--brand', corEscura(VIS.cor || VIS_PADRAO.cor));
+  if (VIS.temaMes === false) { r.dataset.semtema = '1'; document.querySelectorAll('.tema-faixa').forEach(el => el.remove()); } else delete r.dataset.semtema;
+  const tc = document.querySelector('meta[name=theme-color]'); if (tc) tc.content = VIS.tema === 'claro' ? '#f3f6f9' : '#0b0b0c';
+  if (VIS.icone) ['icon', 'apple-touch-icon'].forEach(rel => { let l = document.querySelector(`link[rel="${rel}"]`); if (!l) { l = document.createElement('link'); l.rel = rel; document.head.appendChild(l); } l.href = VIS.icone; });
+  document.querySelectorAll('.logo').forEach(el => { if (!el.closest('.box')) el.outerHTML = logoHtml(); });
+  document.querySelectorAll('[data-vis=nome]').forEach(el => { el.textContent = VIS.nome; });
+  document.querySelectorAll('[data-vis=sub]').forEach(el => { el.textContent = VIS.sub; });
+  if (/Escala Técnica/.test(document.title) && VIS.nome !== 'Escala Técnica') document.title = document.title.replace('Escala Técnica', VIS.nome);
+}
+aplicarVisual();
+async function atualizarVisual() {
+  try {
+    const r = await fetch(API + '?' + new URLSearchParams({ f: 'visual', v: VIS.v || '', _: Date.now() }), { credentials: 'omit', cache: 'no-store' }).then(x => x.json());
+    if (!r || r.erro || r.mesmo) return;
+    VIS = Object.assign({}, VIS_PADRAO, r);
+    try { localStorage.setItem('bt_visual', JSON.stringify(VIS)); } catch (e) { /* ícone grande demais para guardar: usa só nesta visita */ }
+    aplicarVisual(); if (!new URLSearchParams(location.search).get('a') && typeof aplicarTema === 'function') aplicarTema();
+  } catch (e) { /* sem internet: fica o que já tinha */ }
+}
 // ícone do carregamento conforme o tema do dia (Natal, Consciência Negra, Independência…)
-try { const t0 = temaDe(new Date()); document.getElementById('loadIco').textContent = t0.load || t0.ico; } catch (e) { /* fica o logo */ }
+try { if (VIS.icone) document.getElementById('loadIco').innerHTML = `<img src="${VIS.icone}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:22%">`; else if (VIS.temaMes !== false) { const t0 = temaDe(new Date()); document.getElementById('loadIco').textContent = t0.load || t0.ico; } } catch (e) { /* fica o logo */ }
 setTimeout(() => { const l = document.getElementById('loadTxt'); if (l) l.style.opacity = 1; }, 2500);
 const TOKEN = new URLSearchParams(location.search).get('t') || '';
 const LS_KEY = 'agenda_' + TOKEN;
@@ -212,7 +250,7 @@ function render(changed) {
     <div class="chips">${r.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div></div>`;
   const list = S.tab === 'next' ? future : past;
   document.getElementById('app').innerHTML = `
-  <header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>${esc(ag.nome)}</h1><div class="sub"><i style="${S.syncing ? 'background:var(--amber)' : ''}"></i>${S.syncing ? 'Atualizando…' : 'Agenda ao vivo · atualizada às ' + new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
+  <header>${logoHtml()}<div><h1>${esc(ag.nome)}</h1><div class="sub"><i style="${S.syncing ? 'background:var(--amber)' : ''}"></i>${S.syncing ? 'Atualizando…' : 'Agenda ao vivo · atualizada às ' + new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
   ${faixaTema()}
   ${instalavel() ? `<button class="btn" style="width:100%;justify-content:center;margin-bottom:14px" onclick="instalarAgenda()">📲 Instalar na tela inicial do celular</button>` : ''}
   <div id="ponto">${pontoCardHtml()}</div>
@@ -824,7 +862,7 @@ async function initEvento() {
   const draw = () => {
     const aberto = lsGet('ponto_open_' + EV), hist = JSON.parse(lsGet('ponto_hist') || '[]').filter(h => h.ev === ev.nome);
     app.innerHTML = `
-    <header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
+    <header>${logoHtml()}<div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
     ${faixaTema()}
     ${passeOk() ? '<div class="qrok">▣ QR Code conferido. Agora toque em Check-in ou Check-out.</div>' : ''}
     ${(window.MSG_CORR = d.msgCorrecao || window.MSG_CORR, d.correcoes && d.correcoes.length) ? `<div class="card" style="border-color:var(--red)"><h3 style="margin:0 0 8px;font-size:15px">⚠ Correção de horário pedida</h3>${corrHtml(d.correcoes, '{ e: EV }', 'window.RECARREGAR_EV', true)}</div>` : ''}
@@ -868,6 +906,84 @@ function admCsv() {
   const ev = AD.d.eventos.find(e => e.key === AD.ev);
   a.download = 'ponto' + (ev ? '-' + norm(ev.nome).replace(/[^A-Z0-9]+/g, '-').toLowerCase() : '') + '.csv';
   document.body.appendChild(a); a.click(); a.remove();
+}
+/* ----- ⚙ Configurações → Aparência ----- */
+const CORES_VIS = [['#c8161d', 'Vermelho bt'], ['#1d5fd0', 'Azul (Central Operacional)'], ['#18834a', 'Verde'], ['#e8590c', 'Laranja'], ['#6a4bc4', 'Roxo'], ['#0f7f86', 'Petróleo'], ['#d6336c', 'Rosa'], ['#495057', 'Grafite']];
+const VE = { d: null };   // rascunho da aparência
+function visualCardHtml() {
+  const d = VE.d || (VE.d = { nome: VIS.nome, sub: VIS.sub, tema: VIS.tema, cor: VIS.cor, temaMes: VIS.temaMes !== false, icone: VIS.icone, novoIcone: '', remover: false });
+  const ico = d.remover ? '' : (d.novoIcone || d.icone);
+  return `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">🎨 Aparência do app</h3>
+    <div class="muted" style="font-size:12px">Vale para todos: agenda dos técnicos, links de check-in, coordenação, login e este app ADM.</div>
+    <div class="pm" style="position:static;display:block;background:none;padding:0">
+      <label>Nome do app<input id="vN" maxlength="40" value="${esc(d.nome)}" placeholder="Escala Técnica"></label>
+      <label>Texto embaixo do nome<input id="vS" maxlength="60" value="${esc(d.sub)}" placeholder="base técnica"></label></div>
+    <div style="display:flex;gap:14px;align-items:center;margin-top:14px">
+      <div class="icoprev">${ico ? `<img src="${ico}" alt="">` : '<img src="logo.png" alt="" onerror="this.outerHTML=\'<b>bt</b>\'">'}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex:1"><b style="font-size:13px">Ícone</b>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><label class="btn" style="margin:0;text-transform:none;font-size:13px;color:var(--text)">📁 Escolher imagem<input id="vI" type="file" accept="image/png,image/gif,image/jpeg,image/webp" style="display:none"></label>
+        ${ico ? '<button class="btn" id="vIR">Voltar ao padrão</button>' : ''}</div>
+        <span class="muted" style="font-size:11px">PNG, JPG, WEBP ou GIF (GIF animado até 280 KB). Quadrada fica melhor.</span></div></div>
+    <div style="margin-top:14px"><b style="font-size:13px">Tema</b>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${[['escuro', '🌙 Escuro'], ['claro', '☀️ Claro'], ['auto', '📱 Automático (segue o celular)']].map(([k, l]) => `<button class="btn ${d.tema === k ? 'pri' : ''}" data-vt="${k}">${l}</button>`).join('')}</div></div>
+    <div style="margin-top:14px"><b style="font-size:13px">Cor principal</b>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center">${CORES_VIS.map(([c, l]) => `<button class="swatch ${d.cor.toLowerCase() === c ? 'on' : ''}" data-vc="${c}" title="${l}" style="background:${c}"></button>`).join('')}
+        <label class="btn" style="margin:0;text-transform:none;font-size:13px;color:var(--text)" title="Outra cor">🎨 Outra<input id="vC" type="color" value="${esc(d.cor)}" style="width:0;height:0;opacity:0;border:0;padding:0"></label></div></div>
+    <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text);margin-top:14px"><input id="vM" type="checkbox" style="width:auto;margin:0" ${d.temaMes ? 'checked' : ''}> 🎉 Tema do mês (datas comemorativas: faixa e enfeites)</label>
+    <div id="vMsg"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn pri" id="vGo">Salvar aparência</button><button class="btn" id="vRes">Restaurar padrão</button></div></div>`;
+}
+function visualPrevia() {   // mostra na hora como fica (só neste aparelho até salvar)
+  const d = VE.d, v = Object.assign({}, VIS, { nome: d.nome, sub: d.sub, tema: d.tema, cor: d.cor, temaMes: d.temaMes, icone: d.remover ? '' : (d.novoIcone || d.icone) });
+  const salvo = VIS; VIS = v; aplicarVisual(); VIS = salvo;
+}
+function visualCardLigar() {
+  const d = VE.d, ler = () => { d.nome = document.getElementById('vN').value; d.sub = document.getElementById('vS').value; d.temaMes = document.getElementById('vM').checked; };
+  const redesenhar = () => { ler(); visualPrevia(); admDraw(); };
+  document.querySelectorAll('[data-vt]').forEach(b => b.onclick = () => { d.tema = b.dataset.vt; redesenhar(); });
+  document.querySelectorAll('[data-vc]').forEach(b => b.onclick = () => { d.cor = b.dataset.vc; redesenhar(); });
+  document.getElementById('vC').onchange = e => { d.cor = e.target.value; redesenhar(); };
+  document.getElementById('vM').onchange = redesenhar;
+  const ir = document.getElementById('vIR'); if (ir) ir.onclick = () => { d.novoIcone = ''; d.remover = true; redesenhar(); };
+  document.getElementById('vI').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { d.novoIcone = await prepararIcone(f); d.remover = false; redesenhar(); }
+    catch (err) { document.getElementById('vMsg').innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
+  };
+  document.getElementById('vRes').onclick = () => { if (!confirm('Voltar nome, ícone e tema ao padrão?')) return; VE.d = { nome: VIS_PADRAO.nome, sub: VIS_PADRAO.sub, tema: 'escuro', cor: VIS_PADRAO.cor, temaMes: true, icone: d.icone, novoIcone: '', remover: true }; visualPrevia(); admDraw(); };
+  document.getElementById('vGo').onclick = async () => {
+    ler(); const b = document.getElementById('vGo'); b.disabled = true; b.textContent = 'Salvando…';
+    const body = { acao: 'adm_visual', nome: d.nome, sub: d.sub, tema: d.tema, cor: d.cor, temaMes: d.temaMes };
+    if (d.remover) body.removerIcone = true; else if (d.novoIcone) body.icone = d.novoIcone;
+    try {
+      const r = await admPost(body);
+      VIS = Object.assign({}, VIS_PADRAO, r.visual); try { localStorage.setItem('bt_visual', JSON.stringify(VIS)); } catch (e) {}
+      VE.d = null; aplicarVisual(); avisar('✅ ' + r.msg); admDraw();
+    } catch (e) { b.disabled = false; b.textContent = 'Salvar aparência'; document.getElementById('vMsg').innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+  };
+}
+/** Imagem escolhida → data URL pequena: GIF fica como está (mantém a animação); as outras viram PNG 256×256. */
+function prepararIcone(f) {
+  return new Promise((ok, erro) => {
+    const rd = new FileReader();
+    rd.onerror = () => erro(new Error('Não consegui ler a imagem.'));
+    rd.onload = () => {
+      const url = rd.result;
+      if (f.type === 'image/gif') { if (url.length > 380000) return erro(new Error('GIF grande demais (' + Math.round(f.size / 1024) + ' KB). Use um de até 280 KB.')); return ok(url); }
+      const im = new Image();
+      im.onerror = () => erro(new Error('Imagem inválida.'));
+      im.onload = () => {
+        const n = 256, cv = document.createElement('canvas'); cv.width = cv.height = n;
+        const k = Math.max(n / im.width, n / im.height), w = im.width * k, h = im.height * k;
+        cv.getContext('2d').drawImage(im, (n - w) / 2, (n - h) / 2, w, h);
+        let out = cv.toDataURL('image/png');
+        if (out.length > 380000) out = cv.toDataURL('image/webp', 0.9);
+        ok(out);
+      };
+      im.src = url;
+    };
+    rd.readAsDataURL(f);
+  });
 }
 function admFalta(i) {
   const f = window.AFL[i];
@@ -940,7 +1056,7 @@ async function contResponder(i) {
 }
 function acsConvite(i) {
   const u = window.AACS[i], base = location.origin + location.pathname;
-  const txt = 'Olá, ' + (u.nome.split(' ')[0] || '') + '! Seu acesso à *Escala Técnica* está pronto.\n\nEntre em: ' + base + '\nE-mail: ' + u.email + '\n\nNo primeiro acesso toque em *"Primeiro acesso / esqueci a senha"*: você recebe um código no e-mail e cria a sua senha.';
+  const txt = 'Olá, ' + (u.nome.split(' ')[0] || '') + '! Seu acesso à *' + VIS.nome + '* está pronto.\n\nEntre em: ' + base + '\nE-mail: ' + u.email + '\n\nNo primeiro acesso toque em *"Primeiro acesso / esqueci a senha"*: você recebe um código no e-mail e cria a sua senha.';
   window.open('https://wa.me/' + (u.cel || '') + '?text=' + encodeURIComponent(txt), '_blank');
 }
 async function acsAcao(acao, i) {
@@ -965,7 +1081,7 @@ function admDraw() {
   const D = AD.d, app = document.getElementById('app');
   const nChat = AD.chat ? AD.chat.naoLidas : 0;
   const nCont = (D.contestacoes || []).filter(c => c.status === 'ABERTA' || c.status === 'EM ANÁLISE').length;
-  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['acessos', '🔐 Acessos'], ['cont', '💰 Contestações' + (nCont ? ` (${nCont})` : '')], ['conv', '📣 Convocação'], ['regra', 'Regra e locais']];
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['acessos', '🔐 Acessos'], ['cont', '💰 Contestações' + (nCont ? ` (${nCont})` : '')], ['conv', '📣 Convocação'], ['regra', '⚙ Configurações']];
   let body = '';
   if (AD.tab === 'chat') {
     const C = AD.chat || { conversas: [], msgs: [], ativo: true };
@@ -1132,7 +1248,7 @@ function admDraw() {
   } else {
     const c = D.cfg; window.ALC = D.locais;
     const nomesLocais = [...new Set(D.eventos.map(e => e.local).filter(Boolean))].sort();
-    body = `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Regra da diária</h3>
+    body = visualCardHtml() + `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Regra da diária</h3>
       <div class="muted" style="font-size:12px">Horas corridas, sem desconto de almoço. Até a diária = 1 diária; passou = hora extra; se a hora extra passar do limite, vira outra diária (dobra).</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0"><label>Horas de uma diária<input id="rB" type="number" step="0.5" value="${c.base}"></label>
       <label>Hora extra máxima antes da dobra (horas, ex.: 5.5 = 5h30)<input id="rL" type="number" step="0.25" value="${c.limite}"></label>
@@ -1151,7 +1267,7 @@ function admDraw() {
       <div id="lMsg"></div><button class="btn pri" style="margin-top:12px" id="lGo">Salvar local</button></div>`;
   }
   app.style.maxWidth = '980px';
-  app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Administração do ponto</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
+  app.innerHTML = `<header>${logoHtml()}<div><h1>Administração do ponto</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
     ${AD.velho ? '<div id="admVelho" class="muted" style="font-size:12px;margin:0 0 10px">⟳ Atualizando com os dados mais novos…</div>' : ''}
     ${nCont && AD.tab !== 'cont' ? `<div class="card" style="border-color:var(--amber);cursor:pointer;padding:12px 16px" onclick="AD.tab='cont';admDraw()"><b>💰 ${nCont} ${nCont > 1 ? 'contestações' : 'contestação'} de diárias aguardando resposta</b> <span class="muted" style="font-size:12px">· toque para ver</span></div>` : ''}
     <div class="tabs" style="flex-wrap:wrap">${tabs.map(([k, l]) => `<button class="btn ${AD.tab === k ? 'on' : ''}" onclick="AD.tab='${k}';${k === 'conv' ? 'CVS.d=null;' : ''}admDraw()">${l}</button>`).join('')}</div>${body}
@@ -1207,6 +1323,7 @@ function admDraw() {
     }
   }
   if (AD.tab === 'regra') {
+    visualCardLigar();
     document.getElementById('rGo').onclick = async () => {
       try { await admPost({ acao: 'adm_regra', base: document.getElementById('rB').value, limite: document.getElementById('rL').value, exigir: document.getElementById('rX').checked, chat: document.getElementById('rC').checked, prazoH: document.getElementById('rP').value }); avisar('✅ Regra salva.'); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
     };
@@ -1426,7 +1543,7 @@ async function initCadastro() {
   document.getElementById('load').style.display = 'none';
   const campo = (id, label, extra = '', obr = false) => `<label>${label}${obr ? ' <span style="color:var(--red)">*</span>' : ''}<input id="${id}" ${extra}></label>`;
   const NRS = ['NR-06', 'NR-10', 'NR-11', 'NR-12', 'NR-18', 'NR-33', 'NR-35'];
-  app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Cadastro</h1><div class="sub">${esc(D.nome)} · dados para cadastro e pagamentos</div></div></header>
+  app.innerHTML = `<header>${logoHtml()}<div><h1>Cadastro</h1><div class="sub">${esc(D.nome)} · dados para cadastro e pagamentos</div></div></header>
     ${D.preenchido ? `<div class="card" style="border-color:var(--accent)"><b>✅ Você já enviou o cadastro em ${esc(D.preenchido)}.</b><div class="muted" style="font-size:13px">Se precisar corrigir, preencha de novo e envie: os dados novos substituem os anteriores.</div></div>` : ''}
     <div class="card"><div class="muted" style="font-size:13px">Por favor, preencha seus dados. Eles ficam só com a administração e são usados para o seu cadastro e para os pagamentos. Campos com <span style="color:var(--red)">*</span> são obrigatórios.</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0">
@@ -1477,7 +1594,7 @@ async function initCadastro() {
       const funcoes = [...funBox.querySelectorAll('.funrow')].map(d => ({ funcao: d.querySelector('.fF').value, outra: d.querySelector('.fO').value, valor: d.querySelector('.fV').value })).filter(x => x.funcao);
       const r = await apiPost({ acao: 'cad_enviar', cd: CADR, dados: { funcoes, completo: val('fNome'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
         nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), nrs } });
-      app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Cadastro</h1><div class="sub">${esc(D.nome)}</div></div></header>
+      app.innerHTML = `<header>${logoHtml()}<div><h1>Cadastro</h1><div class="sub">${esc(D.nome)}</div></div></header>
         <div class="card" style="border-color:var(--accent);text-align:center;padding:28px 18px"><div style="font-size:44px">✅</div><h2 style="margin:8px 0">Cadastro enviado!</h2><div class="muted">${esc(r.msg)}</div></div>`;
       window.scrollTo(0, 0);
     } catch (err) { b.disabled = false; m.innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
@@ -1502,7 +1619,7 @@ function barraSessao() {
     .catch(e => { if (/SESSAO/.test(e.message || '')) sair(); });
 }
 async function initLogin() {
-  document.title = 'Entrar · Escala Técnica';
+  document.title = 'Entrar · ' + VIS.nome;
   const app = document.getElementById('app'), load = document.getElementById('load');
   const s = lsGet('bt_sessao');
   if (s && lsGet('bt_sessao_app')) { location.replace(lsGet('bt_sessao_app')); return; }   // abre na hora; barraSessao confere a sessão
@@ -1513,7 +1630,7 @@ async function initLogin() {
   load.style.display = 'none';
   const L = { passo: 'senha', email: lsGet('bt_ult_email') || '', msg: '' };
   const tela = () => {
-    app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Escala Técnica</h1><div class="sub">base técnica · vídeo</div></div></header>
+    app.innerHTML = `<header>${logoHtml()}<div><h1 data-vis="nome">${esc(VIS.nome)}</h1><div class="sub" data-vis="sub">${esc(VIS.sub)}</div></div></header>
       ${faixaTema()}
       <div class="card" style="max-width:440px;margin:0 auto"><h3 style="margin:0 0 4px">${L.passo === 'senha' ? 'Entrar' : L.passo === 'email' ? 'Primeiro acesso / esqueci a senha' : 'Criar senha'}</h3>
         <div class="muted" style="font-size:13px">${L.passo === 'senha' ? 'Use o e-mail cadastrado pela administração.' : L.passo === 'email' ? 'Digite seu e-mail: enviamos um código para você criar a sua senha.' : 'Digite o código que chegou no seu e-mail (confira o spam) e escolha uma senha.'}</div>
@@ -1576,7 +1693,7 @@ function cgDraw() {
     ${e.equipe.map((p, j) => `<div class="prow" style="padding:6px 0"><div class="g"><b style="font-size:14px">${esc(p.nome)}</b></div>
       <button class="btn" onclick="cgEnviar(window.CGE[${i}].equipe[${j}].link,'Agenda · '+window.CGE[${i}].equipe[${j}].nome,'*Sua agenda individual · '+window.CGE[${i}].equipe[${j}].nome+'*\\nAqui você vê seus eventos e faz o check-in/check-out:')">📅 Agenda</button></div>`).join('') || '<div class="muted" style="font-size:12px">Sem equipe na escala.</div>'}</div>`; };
   const pessoas = D.equipe.filter(p => !f || norm(p.nome).includes(f));
-  app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>Coordenação</h1><div class="sub">${esc(D.nome)} · escala e links</div></div></header>
+  app.innerHTML = `<header>${logoHtml()}<div><h1>Coordenação</h1><div class="sub">${esc(D.nome)} · escala e links</div></div></header>
     ${faixaTema()}
     ${D.qr ? `<a class="btn pri big" style="width:100%;justify-content:center;text-decoration:none;color:#fff;margin-bottom:12px;box-sizing:border-box" href="${esc(D.qr)}">▣ QR Code e conferência dos horários</a>` : (pode('qr') ? '<div class="card muted" style="font-size:13px">▣ O QR Code aparece aqui quando você for responsável pelo ponto de algum evento.</div>' : '')}
     <div class="tabs" style="flex-wrap:wrap">${abas.map(([k, l]) => `<button class="btn ${CG.aba === k ? 'on' : ''}" onclick="CG.aba='${k}';cgDraw()">${l}</button>`).join('')}</div>
@@ -1623,7 +1740,7 @@ async function initCoord() {
   const draw = () => {
     window.CE = D.eventos;
     const ativos = D.eventos.filter(e => e.ativo), prox = D.eventos.filter(e => !e.ativo);
-    app.innerHTML = `<header><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span>bt</span></div><div><h1>${esc(D.nome)}</h1><div class="sub">Responsável pelo ponto · ${esc(D.tel)}</div></div></header>
+    app.innerHTML = `<header>${logoHtml()}<div><h1>${esc(D.nome)}</h1><div class="sub">Responsável pelo ponto · ${esc(D.tel)}</div></div></header>
       ${faixaTema()}
       ${ativos.map(e => { const i = D.eventos.indexOf(e), ag = e.conferir.filter(x => x.sit === SIT_AG).length, ped = e.conferir.length - ag;
         return `<div class="card"><h3 style="margin:0 0 4px">${esc(e.nome)}</h3><div class="muted" style="font-size:12px">${esc([e.os, e.local, e.start + (e.end !== e.start ? ' a ' + e.end : '')].filter(Boolean).join(' · '))}${e.qr ? ' · ▣ QR Code obrigatório' : ' · ▣ QR Code ainda não é obrigatório'}</div>
@@ -1695,10 +1812,10 @@ function temaDe(d) {
   return { cor: '#2f9e44', ico: '🎄', load: '🎅', txt: 'Feliz Natal, equipe base técnica!', chuva: ['❄️', '🎄', '⭐'] };
 }
 const icoMes = (y, m) => temaDe(new Date(y, m - 1, 5)).ico;
-function faixaTema() { const t = temaDe(new Date()); return `<div class="tema-faixa"><span class="ico">${t.ico}</span><span>${esc(t.txt)}</span></div>`; }
+function faixaTema() { if (VIS.temaMes === false) return ''; const t = temaDe(new Date()); return `<div class="tema-faixa"><span class="ico">${t.ico}</span><span>${esc(t.txt)}</span></div>`; }
 function aplicarTema() {
   const t = temaDe(new Date());
-  document.documentElement.style.setProperty('--tema', t.cor);
+  document.documentElement.style.setProperty('--tema', VIS.temaMes === false ? (VIS.cor || '#c8161d') : t.cor);
   const bg = document.getElementById('temaBg'); if (!bg || bg.childElementCount) return;
   let h = '';
   for (let i = 0; i < 14; i++) h += `<span style="left:${(Math.random() * 100).toFixed(1)}%;font-size:${16 + Math.round(Math.random() * 22)}px;animation-duration:${14 + Math.round(Math.random() * 16)}s;animation-delay:-${Math.round(Math.random() * 25)}s">${t.chuva[i % t.chuva.length]}</span>`;
@@ -1773,6 +1890,7 @@ function iniciarChat() {
   setInterval(() => { if (!document.hidden && (CH.aberto || Date.now() - CH.ult > 60000)) chatCarregar(); }, 10000);
 }
 
+setTimeout(atualizarVisual, 1200);
 if (CADR) {
   aplicarTema();
   initCadastro();
