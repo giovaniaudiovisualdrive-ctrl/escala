@@ -1002,6 +1002,7 @@ function pontoCardHtml() {
   return `${p.semSinal ? '<div class="msg-ok" style="background:rgba(245,184,61,.15);color:var(--amber);border-color:var(--amber);margin-bottom:10px">📶 Sem sinal: mostrando o ponto guardado no celular. O que você registrar fica guardado e vai quando a internet voltar.</div>' : ''}<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${corr}${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
     ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}
     ${p.abertos.length || p.recentes.length ? '<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="abrirRelatorio({ t: TOKEN })">📄 Relatório de horas por evento</button>' : ''}
+    <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirFechamento()">🧾 Minhas diárias por quinzena</button>
     <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirContestacao({ t: TOKEN })">💰 Contestação de diárias</button></div>`;
 }
 async function loadPonto() {
@@ -1074,7 +1075,114 @@ async function initEvento() {
 
 /* ----- administração do ponto (?a=) ----- */
 const ADM = new URLSearchParams(location.search).get('a') || '';
-const AD = { tab: ['reg', 'links', 'chat', 'escala', 'coordg', 'conv', 'regra'].includes(new URLSearchParams(location.search).get('tab')) ? new URLSearchParams(location.search).get('tab') : 'reg', ev: '', q: '', d: null };
+/* ----- fechamento quinzenal (ADM e agenda do técnico) ----- */
+function brlC(v) { return 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+function quinzenaFechada() {   // última quinzena já encerrada (padrão do fechamento)
+  const d = new Date(), y = d.getFullYear(), m = d.getMonth() + 1, p2 = n => String(n).padStart(2, '0');
+  if (d.getDate() > 15) return y + '-' + p2(m) + '-1';
+  const a = new Date(y, m - 2, 1); return a.getFullYear() + '-' + p2(a.getMonth() + 1) + '-2';
+}
+function fechPeriodoHtml(D, F, pre) {
+  const chips = (D ? D.opcoes : []).map(o => `<button class="btn ${F.q === o.id ? 'on' : ''}" style="font-size:12px;padding:6px 10px" onclick="${pre}Q('${o.id}')">${esc(o.txt.replace(/\/\d{4}$/, ''))}</button>`).join('');
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${chips}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end"><label style="margin:0">De<input type="date" id="${pre}De" value="${esc(F.de || (D && !F.q ? D.de : ''))}"></label>
+    <label style="margin:0">Até<input type="date" id="${pre}Ate" value="${esc(F.ate || (D && !F.q ? D.ate : ''))}"></label>
+    <button class="btn" onclick="${pre}Per()">Usar estas datas</button></div>`;
+}
+function fechEventoHtml(e) {
+  return `<div style="padding:8px 0;border-top:1px dashed var(--line);font-size:13px"><b>${esc(e.evento)}</b> <span class="muted">· ${esc(e.dias)}${e.funcoes ? ' · ' + esc(e.funcoes) : ''}</span><br>
+    <span>${!e.diarias && e.escala && !e.pend ? '<span style="color:var(--amber)">⚠ escalado, sem registro no ponto</span> · ' : ''}${e.diarias} diária(s)${e.extra ? ' · HE ' + fmtH(e.extra) : ''}${e.refeicao ? ' · refeição ' + brlC(e.refeicao) : ''}${e.valor ? ' · <b>' + brlC(e.valor) + '</b>' : ''}${e.semValor ? ` · <span style="color:var(--amber)">${e.semValor} sem cachê cadastrado</span>` : ''}${e.pend ? ` · <span style="color:var(--amber)">${e.pend} pendente(s)</span>` : ''}</span>
+    ${e.fora.map(f => `<div style="font-size:12px;margin-top:4px;color:var(--amber)">↪ ${esc(f.dias)} (${f.n} dia${f.n > 1 ? 's' : ''}) ${f.depois ? 'ficam para' : 'entram na'} a quinzena ${esc(f.quinzena)} · pagamento até ${esc(f.pagFmt)}</div>`).join('')}</div>`;
+}
+function fechCabecalho(D) {
+  return `<div style="font-size:15px;font-weight:700">${D.quinzena ? 'Quinzena ' + esc(D.quinzena) : 'Período ' + esc(D.txt)}</div>
+    ${D.pagFmt ? `<div class="muted" style="font-size:12px">Pagamento até <b>${esc(D.pagFmt)}</b></div>` : ''}
+    <div class="muted" style="font-size:11px;margin-top:4px">${esc(D.regra)}${D.refeicao ? ' · Refeição: ' + esc(D.refeicao) : ''}</div>`;
+}
+/* ADM */
+const FC = { q: quinzenaFechada(), de: '', ate: '', D: null, carregando: false, erro: '', aberto: {} };
+async function fcCarregar() {
+  FC.carregando = true; FC.erro = '';
+  try { FC.D = await apiGet(Object.assign({ f: 'fechamento', a: ADM }, FC.q ? { q: FC.q } : { de: FC.de, ate: FC.ate })); }
+  catch (e) { FC.erro = e.message || String(e); FC.D = null; }
+  FC.carregando = false; if (AD.tab === 'fech') admDraw();
+}
+function fcQ(id) { FC.q = id; FC.de = FC.ate = ''; FC.D = null; admDraw(); }
+function fcPer() { const de = document.getElementById('fcDe').value, ate = document.getElementById('fcAte').value; if (!de || !ate) return avisar('Escolha as duas datas.'); FC.q = ''; FC.de = de; FC.ate = ate; FC.D = null; admDraw(); }
+function fcAbrir(k) { FC.aberto[k] = !FC.aberto[k]; admDraw(); }
+function fechAdmHtml() {
+  if (!FC.D && !FC.carregando && !FC.erro) fcCarregar();
+  const D = FC.D, F = FC;
+  if (!D) return `<div class="card">${fechPeriodoHtml(null, F, 'fc')}<div class="muted" style="margin-top:12px">${FC.erro ? '⚠ ' + esc(FC.erro) + ` <button class="btn" onclick="FC.erro='';admDraw()">Tentar de novo</button>` : '<div class="spin" style="margin:8px 0"></div>Calculando o fechamento…'}</div></div>`;
+  const T = D.totais, obs = [];
+  D.pessoas.forEach(p => p.obs.forEach(o => obs.push([p.nome, o])));
+  const prox = obs.filter(([, o]) => o.startsWith('📌')), outras = obs.filter(([, o]) => !o.startsWith('📌'));
+  const linhas = D.pessoas.map(p => `<div class="prow" style="flex-wrap:wrap;cursor:pointer" onclick="fcAbrir('${esc(p.key)}')"><div class="g" style="flex:1"><b>${esc(p.nome)}</b>
+      <span class="muted" style="font-size:12px">${p.eventos.length} evento(s) · escalado ${p.tot.escala} dia(s) · ${p.tot.diarias} diária(s)${p.tot.semRegistro ? ` · <span style="color:var(--amber)">${p.tot.semRegistro} sem ponto</span>` : ''}${p.tot.extra ? ' · HE ' + fmtH(p.tot.extra) : ''}${p.funcoes ? ' · ' + esc(p.funcoes) : ''}</span>
+      ${p.obs.some(o => o.startsWith('📌')) ? '<span style="font-size:12px;color:var(--amber)">↪ tem diárias na próxima quinzena</span>' : ''}</div>
+      <div style="text-align:right"><b>${brlC(p.total)}</b>${p.tot.refeicao ? `<div class="muted" style="font-size:11px">inclui refeição ${brlC(p.tot.refeicao)}</div>` : ''}</div>
+      ${FC.aberto[p.key] ? `<div style="flex-basis:100%">${p.eventos.map(fechEventoHtml).join('')}</div>` : ''}</div>`).join('');
+  return `<div class="card">${fechPeriodoHtml(D, F, 'fc')}</div>
+    <div class="card">${fechCabecalho(D)}
+      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:13px">
+        <div><div class="muted" style="font-size:11px">TÉCNICOS</div><b style="font-size:18px">${T.pessoas}</b></div>
+        <div><div class="muted" style="font-size:11px">DIÁRIAS</div><b style="font-size:18px">${T.diarias}</b></div>
+        <div><div class="muted" style="font-size:11px">HORA EXTRA</div><b style="font-size:18px">${fmtH(T.extra)}</b></div>
+        <div><div class="muted" style="font-size:11px">REFEIÇÃO</div><b style="font-size:18px">${brlC(T.refeicao)}</b></div>
+        <div><div class="muted" style="font-size:11px">TOTAL</div><b style="font-size:18px;color:var(--accent)">${brlC(T.valor + T.refeicao)}</b></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" onclick="fcCsv()">⬇ Baixar planilha (CSV)</button><button class="btn" onclick="fechImprimir(FC.D, true)">🖨 Imprimir / PDF</button></div></div>
+    <div class="card">${linhas || '<div class="muted">Ninguém com escala ou ponto neste período.</div>'}</div>
+    ${prox.length ? `<div class="card" style="border-color:var(--amber)"><b>📌 Diárias que ficam para outra quinzena</b>
+      <div class="muted" style="font-size:12px;margin-bottom:6px">Eventos que cruzam a virada da quinzena: só os dias dentro do período entram neste fechamento.</div>
+      ${prox.map(([n, o]) => `<div style="font-size:13px;padding:5px 0;border-top:1px dashed var(--line)"><b>${esc(n)}</b> — ${esc(o.replace(/^📌\s*/, ''))}</div>`).join('')}</div>` : ''}
+    ${outras.length ? `<div class="card"><b>Para conferir</b>${outras.map(([n, o]) => `<div style="font-size:13px;padding:5px 0;border-top:1px dashed var(--line)"><b>${esc(n)}</b> — ${esc(o)}</div>`).join('')}</div>` : ''}`;
+}
+function fcCsv() {
+  const D = FC.D; if (!D) return;
+  const c = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"', n = v => String(Number(v) || 0).replace('.', ',');
+  const L = [['Técnico', 'Evento', 'Dias neste fechamento', 'Função', 'Diárias', 'Hora extra (h)', 'Refeição', 'Valor diárias', 'Pendentes', 'Dias para outra quinzena'].map(c).join(';')];
+  D.pessoas.forEach(p => p.eventos.forEach(e => L.push([c(p.nome), c(e.evento), c(e.dias), c(e.funcoes), e.diarias, n(e.extra), n(e.refeicao), n(e.valor), e.pend,
+    c(e.fora.map(f => f.dias + ' → ' + f.quinzena + ' (pag. até ' + f.pagFmt + ')').join(' | '))].join(';'))));
+  L.push(''); L.push(c('Observações'));
+  D.pessoas.forEach(p => p.obs.forEach(o => L.push(c(p.nome) + ';' + c(o.replace(/^\S+\s/, '')))));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'fechamento ' + D.de + ' a ' + D.ate + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+function fechImprimir(D, adm) {
+  if (!D) return;
+  const ps = adm ? D.pessoas : (D.pessoa ? [D.pessoa] : []);
+  const w = window.open('', '_blank'); if (!w) return avisar('Libere pop-ups para imprimir.');
+  const ev = e => `<tr><td>${esc(e.evento)}</td><td>${esc(e.dias)}</td><td>${esc(e.funcoes)}</td><td>${e.diarias}</td><td>${e.extra ? fmtH(e.extra) : ''}</td><td>${e.refeicao ? brlC(e.refeicao) : ''}</td><td>${e.valor ? brlC(e.valor) : ''}</td></tr>`;
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Fechamento ${esc(D.txt)}</title><style>body{font:13px Arial,sans-serif;margin:24px;color:#111}h1{font-size:18px;margin:0}h2{font-size:14px;margin:18px 0 4px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #bbb;padding:4px 6px;text-align:left}th{background:#eee}.obs{font-size:12px;margin:3px 0}.m{color:#555;font-size:12px}</style></head><body>
+    <h1>${esc(VIS.nome || 'Escala Técnica')} · Fechamento ${D.quinzena ? 'quinzena ' + esc(D.quinzena) : esc(D.txt)}</h1>
+    <div class="m">${D.pagFmt ? 'Pagamento até ' + esc(D.pagFmt) + ' · ' : ''}${esc(D.regra)}</div>
+    ${adm ? `<div class="m">Total: ${D.totais.pessoas} técnico(s) · ${D.totais.diarias} diária(s) · ${brlC(D.totais.valor + D.totais.refeicao)}</div>` : ''}
+    ${ps.map(p => `<h2>${esc(p.nome)} — ${brlC(p.total)}</h2><table><tr><th>Evento</th><th>Dias</th><th>Função</th><th>Diárias</th><th>HE</th><th>Refeição</th><th>Valor</th></tr>${p.eventos.map(ev).join('')}</table>
+      ${p.obs.map(o => `<div class="obs">${esc(o)}</div>`).join('')}`).join('') || '<p>Sem diárias neste período.</p>'}
+    <script>setTimeout(()=>print(),300)<\/script></body></html>`);
+  w.document.close();
+}
+/* agenda do técnico */
+const FT = { q: '', de: '', ate: '', D: null };
+async function abrirFechamento(q, de, ate) {
+  const el = document.getElementById('pm'); el.style.display = 'grid';
+  FT.q = q === undefined ? quinzenaFechada() : q; FT.de = de || ''; FT.ate = ate || '';
+  el.innerHTML = '<div class="box"><h3>💰 Minhas diárias por quinzena</h3><div class="spin" style="margin:18px auto"></div></div>';
+  try { FT.D = await apiGet(Object.assign({ f: 'fechamento', t: TOKEN }, FT.q ? { q: FT.q } : { de: FT.de, ate: FT.ate })); }
+  catch (e) { el.innerHTML = `<div class="box"><h3>💰 Minhas diárias por quinzena</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts"><button class="btn pri" onclick="closeP()">Fechar</button></div></div>`; return; }
+  const D = FT.D, p = D.pessoa;
+  el.innerHTML = `<div class="box" style="max-height:88vh;overflow:auto"><h3>💰 Minhas diárias por quinzena</h3>${fechPeriodoHtml(D, FT, 'ft')}
+    <div style="margin-top:12px">${fechCabecalho(D)}</div>
+    ${p ? `<div style="margin-top:10px;font-size:14px">${p.tot.diarias} diária(s)${p.tot.extra ? ' · HE ' + fmtH(p.tot.extra) : ''} · <b>${brlC(p.total)}</b>${p.tot.refeicao ? ` <span class="muted" style="font-size:12px">(inclui refeição ${brlC(p.tot.refeicao)})</span>` : ''}</div>
+      ${p.eventos.map(fechEventoHtml).join('')}
+      ${p.obs.length ? `<div style="margin-top:10px;padding:8px 10px;border-radius:9px;background:var(--panel);font-size:12px">${p.obs.map(o => `<div style="margin:3px 0">${esc(o)}</div>`).join('')}</div>` : ''}`
+    : '<div class="muted" style="margin-top:12px">Você não tem diárias neste período.</div>'}
+    <div class="acts">${p ? '<button class="btn" onclick="fechImprimir(FT.D, false)">🖨 Imprimir</button>' : ''}<button class="btn pri" onclick="closeP()">Fechar</button></div></div>`;
+}
+function ftQ(id) { abrirFechamento(id); }
+function ftPer() { const de = document.getElementById('ftDe').value, ate = document.getElementById('ftAte').value; if (!de || !ate) return avisar('Escolha as duas datas.'); abrirFechamento('', de, ate); }
+const AD = { tab: ['reg', 'links', 'chat', 'escala', 'coordg', 'conv', 'fech', 'regra'].includes(new URLSearchParams(location.search).get('tab')) ? new URLSearchParams(location.search).get('tab') : 'reg', ev: '', q: '', d: null };
 function copiar(t) {
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(() => avisar('📋 Copiado.'), () => prompt('Copie:', t));
   else prompt('Copie:', t);
@@ -1276,7 +1384,7 @@ function admDraw() {
   const D = AD.d, app = document.getElementById('app');
   const nChat = AD.chat ? AD.chat.naoLidas : 0;
   const nCont = (D.contestacoes || []).filter(c => c.status === 'ABERTA' || c.status === 'EM ANÁLISE').length;
-  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['acessos', '🔐 Acessos'], ['cont', '💰 Contestações' + (nCont ? ` (${nCont})` : '')], ['conv', '📣 Convocação'], ['regra', '⚙ Configurações']];
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['acessos', '🔐 Acessos'], ['cont', '💰 Contestações' + (nCont ? ` (${nCont})` : '')], ['conv', '📣 Convocação'], ['fech', '🧾 Fechamento'], ['regra', '⚙ Configurações']];
   let body = '';
   if (AD.tab === 'chat') {
     const C = AD.chat || { conversas: [], msgs: [], ativo: true };
@@ -1430,6 +1538,8 @@ function admDraw() {
         <label>Nome<input id="cgN" list="cgL" placeholder="Ex.: ERIC" autocapitalize="characters"><datalist id="cgL">${(D.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
         <label>Celular (WhatsApp)<input id="cgW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
       <div id="cgMsg"></div><button class="btn pri" style="margin-top:12px" id="cgGo">➕ Cadastrar coordenador</button></div>`;
+  } else if (AD.tab === 'fech') {
+    body = fechAdmHtml();
   } else if (AD.tab === 'conv') {
     body = convHtml();
   } else if (AD.tab === 'escala') {
