@@ -264,7 +264,7 @@ function render(changed) {
   const selList = S.sel ? ag.entries.filter(e => e.date === S.sel) : [];
   const rowHtml = r => `<div class="row"><div class="dt"><b>${f(r.from)}</b><span>${dow(r.from)}${r.from !== r.to ? ' → ' + f(r.to) : ''}</span></div><div class="bar" style="background:${col(r.evento)}"></div>
     <div><h4>${esc(r.evento)}</h4><div class="muted" style="font-size:13px">${esc(r.role)}${r.local ? ' · ' + esc(r.local) : ''}${r.os ? ' · ' + esc(r.os) : ''}</div>
-    <div class="chips">${r.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div></div>`;
+    <div class="chips">${r.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div>${r.to >= t && r !== next ? infoEvHtml((ag.infos || {})[r.evKey], true) : ''}</div></div>`;
   const list = S.tab === 'next' ? future : past;
   document.getElementById('app').innerHTML = `
   <header>${logoHtml()}<div><h1>${esc(ag.nome)}</h1><div class="sub"><i style="${S.syncing ? 'background:var(--amber)' : ''}"></i>${S.syncing ? 'Atualizando…' : 'Agenda ao vivo · atualizada às ' + new Date(ag.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div></header>
@@ -275,7 +275,7 @@ function render(changed) {
   <div id="alertaCard">${alertaCardHtml()}</div>
   ${next ? `<div class="card next ${changed ? 'flash' : ''}"><div class="l">${next.from <= t ? 'Agora' : 'Próximo trabalho'}</div><h2>${esc(next.evento)}</h2>
     <div class="muted">${f(next.from)} (${dow(next.from)})${next.from !== next.to ? ' até ' + f(next.to) : ''} · ${esc(next.role)}${next.local ? ' · ' + esc(next.local) : ''}</div>
-    <div class="chips">${next.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div>` : `<div class="card"><b>Nenhum trabalho futuro marcado.</b></div>`}
+    <div class="chips">${next.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div>${infoEvHtml((ag.infos || {})[next.evKey])}</div>` : `<div class="card"><b>Nenhum trabalho futuro marcado.</b></div>`}
   <div class="card ${changed ? 'flash' : ''}">
     <div class="calhd"><button class="btn" onclick="mv(-1)">‹</button><b>${icoMes(y, m)} ${MESES[m - 1]} ${y}</b><button class="btn" onclick="mv(1)">›</button></div>
     <div class="cal">${cal}</div>
@@ -1020,6 +1020,19 @@ async function loadPonto() {
 /* ----- página do link do evento (freelancers) ----- */
 const QR_URL = new URLSearchParams(location.search).get('qr') || '';
 let PASSE_EV = null;   // QR conferido neste celular (vale 15 min)
+/* informações do evento (endereço, acesso, horários, responsável) — agenda e página do evento */
+function infoEvHtml(i, compacto) {
+  if (!i) return '';
+  const L = [];
+  if (i.endereco) L.push(`🗺️ <a href="${esc(i.mapa)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(i.endereco)}</a>`);
+  if (i.acesso) L.push('🚪 ' + esc(i.acesso));
+  if (i.entrada) L.push('⏰ Chegada da equipe: <b>' + esc(i.entrada) + '</b>');
+  if (i.inicio || i.termino) L.push('🎬 Evento: ' + (i.inicio && i.termino ? 'das <b>' + esc(i.inicio) + '</b> às <b>' + esc(i.termino) + '</b>' : i.inicio ? 'começa às <b>' + esc(i.inicio) + '</b>' : 'termina às <b>' + esc(i.termino) + '</b>'));
+  if (i.previsao) L.push('🏁 Previsão de encerramento: ' + esc(i.previsao));
+  (i.resp || []).forEach(r => L.push('👤 Responsável: <b>' + esc(r.nome) + '</b>' + (r.tel ? ` · <a href="https://wa.me/${esc(r.tel)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(r.telFmt)}</a>` : '')));
+  if (!L.length) return '';
+  return `<div class="evinfo" style="font-size:13px;line-height:1.55;margin-top:${compacto ? 6 : 10}px;${compacto ? '' : 'padding:10px 12px;border-radius:10px;background:var(--panel2,rgba(127,127,127,.08));'}">${L.map(x => `<div>${x}</div>`).join('')}</div>`;
+}
 async function initEvento() {
   const app = document.getElementById('app');
   let d;
@@ -1054,6 +1067,7 @@ async function initEvento() {
     app.innerHTML = `
     <header>${logoHtml()}<div><h1>${esc(ev.nome)}</h1><div class="sub">${esc([ev.os, ev.local, per].filter(Boolean).join(' · '))}</div></div></header>
     ${faixaTema()}
+    ${d.info ? `<div class="card"><h3 style="margin:0;font-size:15px">ℹ Informações do evento</h3>${infoEvHtml(d.info)}</div>` : ''}
     ${passeOk() ? '<div class="qrok">▣ QR Code conferido. Agora toque em Check-in ou Check-out.</div>' : ''}
     ${(window.MSG_CORR = d.msgCorrecao || window.MSG_CORR, d.correcoes && d.correcoes.length) ? `<div class="card" style="border-color:var(--red)"><h3 style="margin:0 0 8px;font-size:15px">⚠ Correção de horário pedida</h3>${corrHtml(d.correcoes, '{ e: EV }', 'window.RECARREGAR_EV', true)}</div>` : ''}
     <div class="card"><div style="font-size:14px;margin-bottom:12px">${aberto ? 'Você está com <b>check-in aberto</b> neste evento. Ao sair, faça o check-out.' : 'Registre sua <b>entrada</b> ao chegar e a <b>saída</b> ao terminar.'}</div>
@@ -1738,13 +1752,20 @@ function convHtml() {
     ${ab ? `
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
       <label style="flex:3;min-width:200px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Endereço<input id="cvE${ei}" value="${esc(e.endereco)}" placeholder="Rua, número, bairro, cidade" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px"></label>
-      <label style="flex:1;min-width:110px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Entrada<input id="cvH${ei}" value="${esc(e.entrada)}" placeholder="07:00" inputmode="numeric" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px"></label>
+      <label style="flex:3;min-width:200px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Acesso (portaria, cadastro…)<input id="cvA${ei}" value="${esc(e.acesso || '')}" placeholder="Ex.: portaria 3, levar RG; cadastro feito pelo cliente" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px"></label></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
+      <label style="flex:1;min-width:95px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Chegada da equipe<input id="cvH${ei}" value="${esc(e.entrada)}" placeholder="07:00" inputmode="numeric" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px"></label>
+      <label style="flex:1;min-width:95px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Início do evento<input id="cvI${ei}" value="${esc(e.inicio || '')}" placeholder="09:00" inputmode="numeric" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px"></label>
+      <label style="flex:1;min-width:95px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Término do evento<input id="cvF${ei}" value="${esc(e.termino || '')}" placeholder="18:00" inputmode="numeric" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px"></label>
+      <label style="flex:2;min-width:150px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Previsão de encerramento <span style="text-transform:none;font-weight:400">(opcional)</span><input id="cvP${ei}" value="${esc(e.previsao || '')}" placeholder="Ex.: 23:00" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px"></label>
       <button class="btn" onclick="convCfg(${ei})">Salvar</button></div>
-    ${!e.endereco || !e.entrada ? `<div style="font-size:12px;color:var(--amber);margin-top:6px">${!e.endereco ? 'Sem endereço' : ''}${!e.endereco && !e.entrada ? ' e sem' : !e.entrada ? 'Sem' : ''}${!e.entrada ? ' horário de entrada' : ''}: a mensagem sai sem ${!e.endereco ? 'o endereço' : ''}${!e.endereco && !e.entrada ? ' e ' : ''}${!e.entrada ? '“a confirmar” no horário' : ''}.</div>` : ''}
+    <div class="muted" style="font-size:12px;margin-top:6px">👤 Responsável: ${(e.resp || []).length ? e.resp.map(esc).join('; ') : '<span style="color:var(--amber)">nenhum — defina o coordenador do evento (ou o responsável em 📍 Local)</span>'}</div>
+    ${!e.endereco || !e.entrada ? `<div style="font-size:12px;color:var(--amber);margin-top:6px">${!e.endereco ? 'Sem endereço' : ''}${!e.endereco && !e.entrada ? ' e sem' : !e.entrada ? 'Sem' : ''}${!e.entrada ? ' horário de chegada' : ''}: a mensagem sai sem ${!e.endereco ? 'o endereço' : ''}${!e.endereco && !e.entrada ? ' e ' : ''}${!e.entrada ? '“a confirmar” no horário' : ''}.</div>` : ''}
+    <button class="btn" style="width:100%;justify-content:center;margin-top:12px" onclick="convGrupo(${ei})">👥 Mensagem para o grupo do evento</button>
     <button class="btn pri" style="width:100%;justify-content:center;margin-top:12px" onclick="convFila(${ei})">▶ Enviar para todos${falta ? ` (${falta} pendente${falta > 1 ? 's' : ''})` : ' de novo'}</button>
     ${e.pessoas.map((p, pi) => pessoa(e, ei, p, pi)).join('')}` : ''}</div>`; };
   return `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">📣 Convocação pelo WhatsApp</h3>
-      <div class="muted" style="font-size:12px">Cada pessoa recebe os dias, a função, o local, o endereço com mapa, o horário de entrada, o link de check-in/check-out, a agenda individual e um explicativo rápido de como funciona. O WhatsApp abre com a mensagem pronta: é só tocar em enviar. Na véspera do primeiro dia de cada pessoa chega um e-mail para você com a lista de quem começa.</div></div>
+      <div class="muted" style="font-size:12px">Cada pessoa recebe os dias, a função, o local, o endereço com mapa, o acesso (portaria/cadastro), os horários, o responsável, o link de check-in/check-out, a agenda individual e um explicativo rápido de como funciona. O WhatsApp abre com a mensagem pronta: é só tocar em enviar. Na véspera do primeiro dia de cada pessoa chega um e-mail para você com a lista de quem começa.</div></div>
     ${am.length ? `<div class="card" style="border-color:var(--accent)"><b>🔔 Amanhã · ${esc(cvDia(D.amanha))}</b><div class="muted" style="font-size:13px;margin-top:2px">${am.length} pessoa(s) começam${faltaAm ? ` · ${faltaAm} ainda sem convocação` : ' · todas já convocadas'}</div>
       <button class="btn pri" style="width:100%;justify-content:center;margin-top:10px" onclick="convFilaAmanha()">▶ Enviar para todos de amanhã${faltaAm ? ` (${faltaAm})` : ' de novo'}</button></div>` : ''}
     ${D.eventos.map(evCard).join('') || '<div class="card muted">Nenhum evento com equipe escalada nos próximos 45 dias.</div>'}`;
@@ -1801,9 +1822,18 @@ function convFilaAmanha() {
   if (!it.length) { if (!confirm('Todos de amanhã já receberam. Enviar de novo?')) return; it = window.CVA.slice(); }
   convAbrirFila(it, 'Amanhã');
 }
+function convGrupo(ei) {
+  const e = CVS.d.eventos[ei], el = document.getElementById('pm');
+  window.CVM = e.grupo;
+  el.innerHTML = `<div class="box"><h3>👥 Mensagem para o grupo</h3><div class="muted" style="font-size:12px">${esc(e.nome)} · link geral de check-in, informações do evento e a equipe escalada</div>
+    <textarea readonly rows="16" style="width:100%;box-sizing:border-box;margin-top:10px;font-size:13px;line-height:1.4">${esc(e.grupo)}</textarea>
+    <div class="acts"><button class="btn" onclick="closeP()">Fechar</button><button class="btn" onclick="copiar(window.CVM)">Copiar</button><button class="btn pri" onclick="window.open('https://wa.me/?text=' + encodeURIComponent(window.CVM), '_blank')">📲 Abrir no WhatsApp</button></div></div>`;
+  el.style.display = 'grid';
+}
 async function convCfg(ei) {
   const e = CVS.d.eventos[ei];
-  try { const r = await admPost({ acao: 'adm_conv_cfg', key: e.key, endereco: document.getElementById('cvE' + ei).value, entrada: document.getElementById('cvH' + ei).value }); avisar('✅ ' + r.msg); document.activeElement && document.activeElement.blur(); await convCarregar(); }
+  const v = id => document.getElementById(id + ei).value;
+  try { const r = await admPost({ acao: 'adm_conv_cfg', key: e.key, endereco: v('cvE'), entrada: v('cvH'), acesso: v('cvA'), inicio: v('cvI'), termino: v('cvF'), previsao: v('cvP') }); avisar('✅ ' + r.msg); document.activeElement && document.activeElement.blur(); await convCarregar(); }
   catch (err) { alert(err.message || err); }
 }
 async function convTel(ei, pi) {
@@ -1864,6 +1894,7 @@ async function initCadastro() {
         ${campo('fCnpj', 'CNPJ (se tiver)', 'inputmode="numeric" placeholder="00.000.000/0000-00"')}
         ${campo('fNasc', 'Data de nascimento', 'type="date"', true)}
         ${campo('fTel', 'Telefone (WhatsApp)', `type="tel" inputmode="tel" value="${esc(D.telFmt || '')}"`, true)}
+        ${campo('fEnd', 'Endereço (rua, número, complemento, bairro, cidade e CEP)', 'autocomplete="street-address" placeholder="Rua Exemplo, 123, apto 4 · Bairro · São Paulo · 01234-567"', true)}
         ${campo('fTelE', 'Telefone de emergência', 'type="tel" inputmode="tel"')}
         ${campo('fCont', 'Nome do contato de emergência', 'autocapitalize="words"')}
         ${campo('fPix', 'PIX (chave)', 'placeholder="CPF, celular, e-mail ou chave aleatória"', true)}
@@ -1899,7 +1930,7 @@ async function initCadastro() {
     try {
       const funcoes = [...funBox.querySelectorAll('.funrow')].map(d => ({ funcao: d.querySelector('.fF').value, outra: d.querySelector('.fO').value, valor: d.querySelector('.fV').value })).filter(x => x.funcao);
       const r = await apiPost({ acao: 'cad_enviar', cd: CADR, dados: { funcoes, completo: val('fNome'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
-        nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), nrs } });
+        nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), endereco: val('fEnd'), nrs } });
       app.innerHTML = `<header>${logoHtml()}<div><h1>Cadastro</h1><div class="sub">${esc(D.nome)}</div></div></header>
         <div class="card" style="border-color:var(--accent);text-align:center;padding:28px 18px"><div style="font-size:44px">✅</div><h2 style="margin:8px 0">Cadastro enviado!</h2><div class="muted">${esc(r.msg)}</div></div>`;
       window.scrollTo(0, 0);

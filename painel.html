@@ -1120,6 +1120,12 @@ function vCreate() {
     <div class="field"><label>Início</label><input class="ctl" type="date" id="cStart" value="${esc(C.start)}"></div>
     <div class="field"><label>Fim</label><input class="ctl" type="date" id="cEnd" value="${esc(C.end)}"></div></div>
     ${outMonth ? `<div class="row" style="background:var(--amberSoft);border-color:transparent"><span style="color:var(--amber)">A data não é de ${MESES[D.month]} ${D.year}. Troque a aba no topo para o mês certo.</span></div>` : ''}
+    <div class="field"><label>Endereço</label><input class="ctl" id="cEnd2" value="${esc(C.endereco || '')}" placeholder="Rua, número, bairro, cidade"></div>
+    <div class="field"><label>Acesso (portaria, cadastro, estacionamento…)</label><input class="ctl" id="cAcesso" value="${esc(C.acesso || '')}" placeholder="Ex.: entrar pela portaria 3; levar RG, cadastro feito pelo cliente"></div>
+    <div class="f3"><div class="field"><label>Chegada da equipe</label><input class="ctl" id="cEntrada" value="${esc(C.entrada || '')}" placeholder="07:00" inputmode="numeric"></div>
+    <div class="field"><label>Início do evento</label><input class="ctl" id="cIni" value="${esc(C.inicio || '')}" placeholder="09:00" inputmode="numeric"></div>
+    <div class="field"><label>Término do evento</label><input class="ctl" id="cTer" value="${esc(C.termino || '')}" placeholder="18:00" inputmode="numeric"></div></div>
+    <div class="field"><label>Previsão de encerramento (opcional)</label><input class="ctl" id="cPrev" value="${esc(C.previsao || '')}" placeholder="Ex.: 23:00 ou desmontagem até 02:00"></div>
     <div class="field"><label>Coordenador(es) do evento</label><input class="ctl" id="cCoord" list="${C.coordTec ? 'dlTeamC' : 'dlCoordC'}" value="${esc(C.coord || '')}" placeholder="${C.coordTec ? 'Escolha o técnico' : 'Escolha o coordenador'}" autocomplete="off"><datalist id="dlCoordC">${(D.coordenadores || []).map(m => `<option value="${esc(m.nome)}">`).join('')}</datalist><datalist id="dlTeamC">${D.team.map(m => `<option value="${esc(m.name)}">`).join('')}</datalist>
       <label style="display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text);margin-top:6px"><input type="checkbox" id="cCoordTec" ${C.coordTec ? 'checked' : ''}> Adicionar técnico como coordenador (só neste evento)</label>
       <div class="dim" style="font-size:11px;margin-top:4px">Entra na linha COORDENADOR em todos os dias do evento e já vira responsável pelo QR Code (recebe o link dele). Mais de um: separe com /</div></div>
@@ -1137,6 +1143,7 @@ function vCreate() {
   </div></div>`;
   const bind = (id, k) => { const el = $('#' + id); el.oninput = () => { C[k] = el.value; }; };
   bind('cNome', 'nome'); bind('cOs', 'os'); bind('cLocal', 'local'); bind('cCoord', 'coord');
+  bind('cEnd2', 'endereco'); bind('cAcesso', 'acesso'); bind('cEntrada', 'entrada'); bind('cIni', 'inicio'); bind('cTer', 'termino'); bind('cPrev', 'previsao');
   $('#cCoordTec').onchange = ev => { C.coordTec = ev.target.checked; render(); };
   $('#cLista').onchange = ev => C.lista = ev.target.value;
   const dates = () => { C.start = $('#cStart').value; C.end = $('#cEnd').value || C.start; if (C.end < C.start) C.end = C.start; C.phases = defaultPhases(dayOfIso(C.start), dayOfIso(C.end)); render(); };
@@ -1144,8 +1151,9 @@ function vCreate() {
   if ($('#cPh')) $('#cPh').onchange = ev => { C.phases[ev.target.dataset.d] = ev.target.value; render(); };
   $('#cGo').onclick = async () => {
     if (!C.nome.trim()) return toast('Informe o nome do evento.', true);
-    const r = await run('criarEvento', [{ sheet: S.sheet, nome: C.nome, os: C.os, local: C.local, lista: C.lista, start: C.start, end: C.end, phases: C.phases, coord: C.coord || '' }]);
-    toast(`✅ Evento criado na linha ${r.row}.` + ((r.semTel || []).length ? ` Sem celular para o QR: ${esc(r.semTel.join(', '))} (cadastre o celular e adicione em 📍 Local).` : ''), !!(r.semTel || []).length); S.create = null; await load(); const ne = S.data.events.find(e => e.row === r.row); if (ne) { S.assign.row = ne.row; S.assign.days = ne.activeDays.slice(); go('assign'); }
+    const r = await run('criarEvento', [{ sheet: S.sheet, nome: C.nome, os: C.os, local: C.local, lista: C.lista, start: C.start, end: C.end, phases: C.phases, coord: C.coord || '',
+      endereco: C.endereco || '', acesso: C.acesso || '', entrada: C.entrada || '', inicio: C.inicio || '', termino: C.termino || '', previsao: C.previsao || '' }]);
+    toast(`✅ Evento criado na linha ${r.row}.` + ((r.semTel || []).length ? ` Sem celular para o QR: ${esc(r.semTel.join(', '))} (cadastre o celular e adicione em 📍 Local).` : '') + (r.avisoInfo ? ' ⚠ ' + esc(r.avisoInfo) : ''), !!(r.semTel || []).length || !!r.avisoInfo); S.create = null; await load(); const ne = S.data.events.find(e => e.row === r.row); if (ne) { S.assign.row = ne.row; S.assign.days = ne.activeDays.slice(); go('assign'); }
   };
 }
 
