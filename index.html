@@ -1434,7 +1434,7 @@ async function acsAcao(acao, i) {
   try { const r = await admPost({ acao, email: u.email }); avisar(r.msg); if (AC.edit === u.email) AC.edit = null; await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
 }
 async function admCadDel(i) {
-  const c = window.ACAD[i]; if (!confirm('Cancelar o cadastro de ' + c.nome + '? O link para de funcionar' + (c.status === 'PREENCHIDO' ? ' (os dados já enviados continuam na planilha).' : '.'))) return;
+  const c = window.ACAD[i]; if (!confirm('Excluir o cadastro de ' + c.nome + '? A linha sai da planilha “CADASTRO TÉCNICOS” e o link para de funcionar. Fica na 🗑 Lixeira (menu Exclusões), de onde dá para restaurar.')) return;
   try { const r = await admPost({ acao: 'adm_cad_del', id: c.id }); avisar(r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
 }
 async function admCoordDel(i) {
