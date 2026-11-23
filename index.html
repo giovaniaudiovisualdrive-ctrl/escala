@@ -118,6 +118,19 @@ body{background:var(--bg)}
 .qrbar{height:6px;border-radius:6px;background:var(--panel2);overflow:hidden;margin:6px 0}.qrbar i{display:block;height:100%;width:100%;background:var(--accent);transition:width 1s linear}
 .nb{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--amber);color:#111;font-size:12px;font-weight:800;text-align:center;margin-left:4px}
 .qrok{margin-bottom:14px;padding:10px 12px;border-radius:10px;background:rgba(31,191,117,.15);color:var(--ok);font-weight:600;font-size:13px}
+/* alerta da coordenação (tela cheia) */
+#alertaTela{position:fixed;inset:0;z-index:80;background:rgba(10,6,0,.9);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:grid;place-items:center;padding:18px;animation:alrIn .25s ease-out}
+#alertaTela .ab{width:min(460px,100%);background:linear-gradient(var(--panel),var(--panel)),var(--bg);border:3px solid var(--amber);border-radius:20px;padding:22px 20px;text-align:center;box-shadow:0 0 0 0 rgba(245,184,61,.6);animation:alrPulso 1.4s infinite}
+#alertaTela .ai{font-size:54px;line-height:1}
+#alertaTela h2{margin:8px 0 4px;font-size:15px;letter-spacing:2px;text-transform:uppercase;color:var(--amber)}
+#alertaTela .at{font-size:24px;font-weight:800;line-height:1.25;margin:10px 0 12px;color:var(--text)}
+#alertaTela .btn{width:100%;justify-content:center;font-size:17px;padding:14px;margin-top:14px}
+@keyframes alrPulso{0%{box-shadow:0 0 0 0 rgba(245,184,61,.55)}70%{box-shadow:0 0 0 22px rgba(245,184,61,0)}100%{box-shadow:0 0 0 0 rgba(245,184,61,0)}}
+@keyframes alrIn{from{opacity:0}to{opacity:1}}
+.alr-frase{display:flex;gap:6px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:12px;margin-top:8px;cursor:pointer;background:var(--panel2)}
+.alr-frase.on{border-color:var(--amber);background:rgba(245,184,61,.12)}
+.alr-frase span{flex:1;font-size:14px}
+.btn.alr{background:#d9480f;border-color:#d9480f;color:#fff;font-size:18px;font-weight:800;padding:16px;width:100%;justify-content:center;margin-top:14px;letter-spacing:.5px}
 #filaBar{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:15;display:flex;flex-direction:column;gap:8px}
 #filaBar .fila-it{background:var(--panel);border:1px solid var(--amber);border-left:5px solid var(--amber);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
 #filaBar .fila-it.err{border-color:var(--red);border-left-color:var(--red)}
@@ -259,6 +272,7 @@ function render(changed) {
   ${instalavel() ? `<button class="btn" style="width:100%;justify-content:center;margin-bottom:14px" onclick="instalarAgenda()">📲 Instalar na tela inicial do celular</button>` : ''}
   <div id="ponto">${pontoCardHtml()}</div>
   <div id="cacheCard">${cacheCardHtml()}</div>
+  <div id="alertaCard">${alertaCardHtml()}</div>
   ${next ? `<div class="card next ${changed ? 'flash' : ''}"><div class="l">${next.from <= t ? 'Agora' : 'Próximo trabalho'}</div><h2>${esc(next.evento)}</h2>
     <div class="muted">${f(next.from)} (${dow(next.from)})${next.from !== next.to ? ' até ' + f(next.to) : ''} · ${esc(next.role)}${next.local ? ' · ' + esc(next.local) : ''}</div>
     <div class="chips">${next.days.map(d => `<span class="chip">${f(d.date)} · ${esc(d.phase || 'a definir')}</span>`).join('')}</div></div>` : `<div class="card"><b>Nenhum trabalho futuro marcado.</b></div>`}
@@ -292,6 +306,84 @@ async function apiGet(params) {
 }
 async function apiPost(body) {
   return pedirJson(API, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+}
+/* ---------- 📣 ALERTA DA COORDENAÇÃO: notificação no celular (toca e vibra mesmo com o app fechado) ---------- */
+const ALS = { sub: null, ok: false, suportado: 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window, msg: '' };
+const IOS_APP = () => window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+function b64uBytes(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); const b = atob(s + '==='.slice((s.length + 3) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); }
+function alertaVistos() { try { return JSON.parse(lsGet('alerta_vistos') || '[]'); } catch (e) { return []; } }
+function bipe() {   // toque curto e baixo (o celular também toca o som da notificação)
+  try { const C = window.AudioContext || window.webkitAudioContext; if (!C) return; const c = new C();
+    [[880, 0], [660, .28], [880, .56]].forEach(([f, t]) => { const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(.0001, c.currentTime + t); g.gain.exponentialRampToValueAtTime(.18, c.currentTime + t + .03); g.gain.exponentialRampToValueAtTime(.0001, c.currentTime + t + .24); o.connect(g); g.connect(c.destination); o.start(c.currentTime + t); o.stop(c.currentTime + t + .26); });
+  } catch (e) { /* sem som */ }
+}
+function mostrarAlerta(a) {
+  if (!a || !a.texto) return;
+  const vistos = alertaVistos(); if (a.id && a.id !== 'teste' && vistos.includes(a.id)) return;
+  if (a.id && a.id !== 'teste') { vistos.unshift(a.id); lsSet('alerta_vistos', JSON.stringify(vistos.slice(0, 40))); }
+  const el = document.getElementById('alertaTela'); if (el) el.remove();
+  const d = document.createElement('div'); d.id = 'alertaTela';
+  const hm = a.quando ? new Date(a.quando).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+  d.innerHTML = `<div class="ab"><div class="ai">📣</div><h2>${a.teste ? 'Teste de alerta' : 'Alerta da coordenação'}</h2><div class="at">${esc(a.texto)}</div>
+    <div class="muted" style="font-size:13px">${esc([a.evento, a.por ? 'por ' + a.por : '', hm].filter(Boolean).join(' · '))}</div>
+    <button class="btn pri" onclick="document.getElementById('alertaTela').remove()">OK, entendi</button></div>`;
+  document.body.appendChild(d);
+  try { navigator.vibrate && navigator.vibrate([500, 200, 500, 200, 900]); } catch (e) {}
+  bipe();
+}
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', ev => { if (ev.data && ev.data.tipo === 'alerta') mostrarAlerta(ev.data.alerta); });
+async function alertaChecar(depois) {   // este celular já está com os alertas ativados?
+  if (!ALS.suportado || !navigator.serviceWorker.controller && location.protocol !== 'https:') { if (depois) depois(); return; }
+  try { const reg = await navigator.serviceWorker.ready; ALS.sub = await reg.pushManager.getSubscription(); ALS.ok = !!ALS.sub && Notification.permission === 'granted' && lsGet('alerta_ok') === '1'; } catch (e) {}
+  if (depois) depois();
+}
+function alertaQuem() { return EV ? { e: EV, nome: lsGet('ponto_nome') || '' } : { t: TOKEN }; }
+async function alertaAtivar() {
+  const m = document.getElementById('alrMsg'), say = (t, err) => { if (m) m.innerHTML = `<div class="${err ? 'msg-err' : 'msg-ok'}">${t}</div>`; };
+  const q = alertaQuem();
+  if (EV) { const n = document.getElementById('alrNome'); if (n) { q.nome = n.value.trim(); if (q.nome.length < 3) return say('Digite seu nome para ativar os alertas.', 1); lsSet('ponto_nome', q.nome); } }
+  try {
+    say('Ativando… se o celular perguntar, toque em <b>Permitir</b>.');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return say('As notificações foram bloqueadas. Libere em Ajustes do celular → Notificações → navegador (ou o app), e tente de novo.', 1);
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) { const k = await apiGet({ f: 'alerta', chave: '1' }); sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(k.chave) }); }
+    await apiPost(Object.assign({ acao: 'alerta_inscrever', ep: sub.endpoint, ua: navigator.userAgent.slice(0, 80) }, q));
+    lsSet('alerta_ok', '1'); ALS.sub = sub; ALS.ok = true; alertaDesenhar();
+    avisar('🔔 Alertas ativados neste celular.');
+  } catch (e) { say('⚠ ' + esc(e.message || e), 1); }
+}
+async function alertaTestar() {
+  const m = document.getElementById('alrMsg');
+  try { const r = await apiPost(Object.assign({ acao: 'alerta_teste', ep: ALS.sub.endpoint }, alertaQuem())); if (m) m.innerHTML = `<div class="msg-ok">${esc(r.msg)} Pode bloquear a tela para ver.</div>`; }
+  catch (e) { if (m) m.innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+}
+async function alertaDesativar() {
+  if (!confirm('Desativar os alertas da coordenação neste celular?')) return;
+  try { if (ALS.sub) { await apiPost({ acao: 'alerta_sair', ep: ALS.sub.endpoint }); await ALS.sub.unsubscribe(); } } catch (e) {}
+  lsSet('alerta_ok', null); ALS.sub = null; ALS.ok = false; alertaDesenhar();
+}
+function alertaCardHtml() {
+  const tit = '<h3 style="margin:0 0 6px;font-size:15px">🔔 Alertas da coordenação</h3>';
+  if (ALS.ok) return `<div class="card">${tit}<div class="muted" style="font-size:13px">✅ Ativados neste celular. Quando a coordenação chamar a equipe ("voltar à sala", "o evento vai começar"), o celular toca e vibra, mesmo com a tela bloqueada.</div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn" onclick="alertaTestar()">Testar agora</button><button class="btn" onclick="alertaDesativar()">Desativar</button></div><div id="alrMsg"></div></div>`;
+  if (IOS && !IOS_APP()) return `<div class="card">${tit}<div class="muted" style="font-size:13px">No iPhone, os alertas funcionam com o app instalado: toque em <b>Compartilhar</b> (⬆️) → <b>Adicionar à Tela de Início</b>, abra pelo ícone novo e ative aqui.</div></div>`;
+  if (!ALS.suportado) return `<div class="card">${tit}<div class="muted" style="font-size:13px">Este navegador não recebe alertas. Abra este link no Chrome (Android) ou instale o app na tela inicial (iPhone).</div></div>`;
+  return `<div class="card">${tit}<div class="muted" style="font-size:13px">Ative para receber os chamados da coordenação durante o evento (ex.: "Atenção, equipe: voltar à sala!"). O celular toca e vibra, mesmo com a tela bloqueada.</div>
+    ${EV ? `<div class="pm" style="position:static;display:block;background:none;padding:0"><label>Seu nome<input id="alrNome" value="${esc(lsGet('ponto_nome') || '')}" placeholder="Nome completo"></label></div>` : ''}
+    <button class="btn pri" style="width:100%;justify-content:center;margin-top:10px" onclick="alertaAtivar()">🔔 Ativar alertas neste celular</button><div id="alrMsg"></div></div>`;
+}
+function alertaDesenhar() { const el = document.getElementById('alertaCard'); if (el) el.innerHTML = alertaCardHtml(); }
+/** Quem está com o app aberto e sem os alertas ativados: confere os alertas recentes a cada minuto. */
+async function alertaConferir() {
+  if (document.hidden || ALS.ok || (!TOKEN && !EV)) return;
+  try { const r = await apiGet(EV ? { f: 'alerta', e: EV } : { f: 'alerta', t: TOKEN }); (r.alertas || []).slice(0, 1).forEach(mostrarAlerta); } catch (e) { /* sem sinal */ }
+}
+function alertaIniciar() {
+  alertaChecar(alertaDesenhar);
+  setTimeout(alertaConferir, 4000); setInterval(alertaConferir, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) alertaConferir(); });
 }
 /* ---------- registros feitos SEM SINAL: ficam guardados no celular e vão sozinhos quando a internet voltar ---------- */
 const novoFid = () => Date.now().toString(36) + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => (b % 36).toString(36)).join('');
@@ -970,6 +1062,7 @@ async function initEvento() {
       <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirContestacao({ e: EV })">💰 Contestação de diárias</button>
       <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}${d.qr ? ' · ▣ Escaneie o QR Code na tela do responsável.' : ''}</div></div>
     ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · HE ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
+    <div id="alertaCard">${alertaCardHtml()}</div>
     <div class="foot">Os registros vão direto para a coordenação.</div>`;
     document.getElementById('bIn').onclick = () => ponto('checkin');
     const bm = document.getElementById('bMot'); if (bm) bm.onclick = () => abrirPonto({ acao: 'checkin', motorista: true, sub: ev.nome, pedirNome: true, exigir: false, depois: recarregar });
@@ -1266,7 +1359,7 @@ function admDraw() {
   } else if (AD.tab === 'acessos') {
     const L = D.acessos || [], E = AC.edit ? L.find(x => x.email === AC.edit) : null, F = E || AC.novo || { nivel: 'TÉCNICO', perms: ['agenda', 'escala', 'pendencias', 'qr'] };
     window.AACS = L;
-    const PERM = [['agenda', 'Agenda da equipe'], ['escala', 'Escala técnica'], ['pendencias', 'Pendências'], ['qr', 'QR Code e conferência']];
+    const PERM = [['agenda', 'Agenda da equipe'], ['escala', 'Escala técnica'], ['pendencias', 'Pendências'], ['qr', 'QR Code e conferência'], ['alerta', '📣 Alerta para a equipe (toca o celular dos técnicos)']];
     const nivelTxt = { ADMIN: '👑 Administrador', COORDENADOR: '🧭 Coordenador', 'TÉCNICO': '👤 Técnico' };
     const grupo = n => L.filter(x => x.nivel === n);
     const linha = u => { const i = L.indexOf(u); return `<div class="prow" style="flex-wrap:wrap;${u.ativo ? '' : 'opacity:.55'}"><div class="g" style="flex-basis:100%"><b>${esc(u.nome)}${u.ativo ? '' : ' · desativado'}</b><span class="muted" style="font-size:12px">${esc(u.email)}${u.pessoa && u.pessoa !== u.nome ? ' · na escala: ' + esc(u.pessoa) : ''}${u.celFmt ? ' · ' + esc(u.celFmt) : ''}</span>
@@ -1766,7 +1859,7 @@ async function initLogin() {
 
 /* ----- coordenador (?k=): vê a escala e manda os links, sem alterar nada ----- */
 const COORDG = new URLSearchParams(location.search).get('k') || '';
-const CG = { aba: 'ev', q: '', d: null };
+const CG = { aba: '', q: '', d: null };   // sem aba escolhida: abre na primeira (Alerta, se houver evento hoje e a permissão)
 function cgEnviar(link, titulo, texto) {
   if (navigator.share) navigator.share({ title: titulo, text: texto, url: link }).catch(() => {});
   else window.open('https://wa.me/?text=' + encodeURIComponent(texto + '\n' + link), '_blank');
@@ -1780,11 +1873,50 @@ async function cgCadNovo() {
     avisar('✅ ' + r.msg); CG.d.cadastros = [r.cad].concat(CG.d.cadastros || []); cgDraw();
   } catch (e) { if (win) win.close(); m.innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
 }
+/* ----- 📣 Alerta para a equipe (coordenador com a permissão) ----- */
+const ALR_PADRAO = ['⚠️ Atenção, equipe: voltar à sala!', '🎬 Atenção, pessoal: equipe aos seus postos, o evento vai começar!', '📍 Atenção: retornem às suas salas agora.', '🔧 Técnicos: venham à régie / mesa de operação.', '✅ Liberados: pausa de 15 minutos.'];
+function alrFrases() { try { const f = JSON.parse(lsGet('alerta_frases') || 'null'); return Array.isArray(f) && f.length ? f : ALR_PADRAO.slice(); } catch (e) { return ALR_PADRAO.slice(); } }
+function cgAlertaHtml() {
+  const evs = (CG.d.alerta && CG.d.alerta.eventos) || [];
+  if (!evs.length) return '<div class="card"><h3 style="margin:0 0 6px;font-size:15px">📣 Alerta para a equipe</h3><div class="muted" style="font-size:13px">Nenhum evento acontecendo hoje. O alerta aparece aqui durante o evento.</div></div>';
+  if (!CG.alrEv || !evs.some(e => e.key === CG.alrEv)) CG.alrEv = evs[0].key;
+  const fr = alrFrases(); if (CG.alrTxt == null) CG.alrTxt = fr[0];
+  const ev = evs.find(e => e.key === CG.alrEv), hist = (CG.alrRes && CG.alrRes.key === ev.key ? CG.alrRes.historico : ev.historico) || [];
+  const hm = t => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return `<div class="card" id="alrBox"><h3 style="margin:0 0 6px;font-size:15px">📣 Alerta para a equipe</h3>
+    <div class="muted" style="font-size:12px">Toca e vibra o celular de quem está no evento hoje e ativou os alertas, como um aviso geral. Use para chamar a equipe.</div>
+    ${evs.length > 1 ? `<div class="pm" style="position:static;display:block;background:none;padding:0"><label>Evento<select id="alrEv">${evs.map(e => `<option value="${esc(e.key)}" ${e.key === CG.alrEv ? 'selected' : ''}>${esc(e.nome)}${e.local ? ' · ' + esc(e.local) : ''}</option>`).join('')}</select></label></div>` : `<div style="margin-top:8px"><b>${esc(ev.nome)}</b>${ev.local ? ' <span class="muted">· ' + esc(ev.local) + '</span>' : ''}</div>`}
+    <div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Frases prontas (toque para usar)</div>
+    ${fr.map((t, i) => `<div class="alr-frase ${t === CG.alrTxt ? 'on' : ''}" onclick="CG.alrTxt=alrFrases()[${i}];cgDraw()"><span>${esc(t)}</span><button class="btn" style="padding:4px 8px;font-size:12px" onclick="event.stopPropagation();alrFraseDel(${i})" title="Apagar">🗑</button></div>`).join('')}
+    <div class="pm" style="position:static;display:block;background:none;padding:0"><label>Mensagem (pode editar)<textarea id="alrTxt" rows="2" maxlength="160">${esc(CG.alrTxt)}</textarea></label></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn" onclick="alrFraseAdd()">➕ Guardar como frase pronta</button>${fr.join() !== ALR_PADRAO.join() ? '<button class="btn" onclick="if(confirm(\'Voltar às frases padrão?\')){lsSet(\'alerta_frases\',null);cgDraw();}">Frases padrão</button>' : ''}</div>
+    <button class="btn alr" id="alrGo" onclick="cgAlertar()">📣 DISPARAR ALERTA</button>
+    <div id="alrMsg2"></div>
+    ${CG.alrRes && CG.alrRes.key === ev.key && CG.alrRes.sem && CG.alrRes.sem.length ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Sem alerta ativado (${CG.alrRes.sem.length}): chame pelo WhatsApp</div>
+      ${CG.alrRes.sem.map(p => `<div class="prow" style="padding:6px 0"><div class="g"><b style="font-size:14px">${esc(p.nome)}</b></div>${p.waLink ? `<a class="btn" style="text-decoration:none;color:inherit" href="${esc(p.waLink)}" target="_blank" rel="noopener">📲 WhatsApp</a>` : '<span class="muted" style="font-size:12px">sem celular</span>'}</div>`).join('')}` : ''}
+    ${hist.length ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Enviados hoje</div>
+      ${hist.map(a => `<div class="prow" style="padding:6px 0"><div class="g"><span style="font-size:13px">${esc(a.texto)}</span><span class="muted" style="font-size:12px">${hm(a.quando)} · ${esc(a.por || '')} · ${a.enviados || 0} celular(es)</span></div></div>`).join('')}` : ''}</div>`;
+}
+function alrFraseAdd() { const t = (document.getElementById('alrTxt').value || '').trim(); if (t.length < 3) return; const f = alrFrases(); if (!f.includes(t)) f.unshift(t); lsSet('alerta_frases', JSON.stringify(f.slice(0, 12))); CG.alrTxt = t; cgDraw(); }
+function alrFraseDel(i) { const f = alrFrases(); f.splice(i, 1); lsSet('alerta_frases', f.length ? JSON.stringify(f) : null); cgDraw(); }
+async function cgAlertar() {
+  const t = (document.getElementById('alrTxt').value || '').trim(), m = document.getElementById('alrMsg2'), b = document.getElementById('alrGo');
+  const ev = ((CG.d.alerta && CG.d.alerta.eventos) || []).find(e => e.key === CG.alrEv);
+  if (t.length < 3) { m.innerHTML = '<div class="msg-err">Escreva a mensagem.</div>'; return; }
+  if (!confirm('Disparar para a equipe de ' + (ev ? ev.nome : 'hoje') + '?\n\n"' + t + '"')) return;
+  b.disabled = true; b.textContent = 'Enviando…';
+  try {
+    const r = await apiPost({ acao: 'coord_alerta', k: COORDG, evento: CG.alrEv, texto: t });
+    CG.alrTxt = t; CG.alrRes = Object.assign({ key: CG.alrEv }, r);
+    if (ev) ev.historico = r.historico;
+    cgDraw(); const m2 = document.getElementById('alrMsg2'); if (m2) m2.innerHTML = `<div class="${r.enviados ? 'msg-ok' : 'msg-err'}">${esc(r.msg)}</div>`;
+  } catch (e) { b.disabled = false; b.textContent = '📣 DISPARAR ALERTA'; m.innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+}
 function cgDraw() {
   const D = CG.d, app = document.getElementById('app'), f = norm(CG.q);
   const pode = x => !D.perms || D.perms.includes(x);
-  const abas = [pode('escala') && ['ev', '📋 Escala'], (pode('escala') || pode('agenda')) && ['eq', '👤 Equipe'], pode('agenda') && ['ag', '📅 Agenda da equipe'], pode('pendencias') && ['pe', '⚠ Pendências' + ((D.pendencias || []).length ? ` (${D.pendencias.length})` : '')], D.cadastros && ['cad', '👤 Cadastrar técnico']].filter(Boolean);
-  if (abas.length && !abas.some(a => a[0] === CG.aba)) CG.aba = abas[0][0];
+  const abas = [D.alerta && ['alr', '📣 Alerta'], pode('escala') && ['ev', '📋 Escala'], (pode('escala') || pode('agenda')) && ['eq', '👤 Equipe'], pode('agenda') && ['ag', '📅 Agenda da equipe'], pode('pendencias') && ['pe', '⚠ Pendências' + ((D.pendencias || []).length ? ` (${D.pendencias.length})` : '')], D.cadastros && ['cad', '👤 Cadastrar técnico']].filter(Boolean);
+  if (abas.length && (!CG.abaUser || !abas.some(a => a[0] === CG.aba))) CG.aba = (D.alerta && D.alerta.eventos && D.alerta.eventos.length) ? 'alr' : (abas.find(a => a[0] !== 'alr') || abas[0])[0];
   window.CGE = D.eventos; window.CGP = D.equipe;
   const evs = D.eventos.filter(e => !f || norm([e.nome, e.os, e.local, e.equipe.map(p => p.nome).join(' ')].join(' ')).includes(f));
   const atuais = evs.filter(e => e.endIso >= D.hoje), passados = evs.filter(e => e.endIso < D.hoje).reverse();
@@ -1799,9 +1931,10 @@ function cgDraw() {
   app.innerHTML = `<header>${logoHtml()}<div><h1>Coordenação</h1><div class="sub">${esc(D.nome)} · escala e links</div></div></header>
     ${faixaTema()}
     ${D.qr ? `<a class="btn pri big" style="width:100%;justify-content:center;text-decoration:none;color:#fff;margin-bottom:12px;box-sizing:border-box" href="${esc(D.qr)}">▣ QR Code e conferência dos horários</a>` : (pode('qr') ? '<div class="card muted" style="font-size:13px">▣ O QR Code aparece aqui quando você for responsável pelo ponto de algum evento.</div>' : '')}
-    <div class="tabs" style="flex-wrap:wrap">${abas.map(([k, l]) => `<button class="btn ${CG.aba === k ? 'on' : ''}" onclick="CG.aba='${k}';cgDraw()">${l}</button>`).join('')}</div>
+    <div class="tabs" style="flex-wrap:wrap">${abas.map(([k, l]) => `<button class="btn ${CG.aba === k ? 'on' : ''}" onclick="CG.aba='${k}';CG.abaUser=1;cgDraw()">${l}</button>`).join('')}</div>
     ${CG.aba === 'ev' || CG.aba === 'eq' ? `<div class="card"><input id="cgQ" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:15px" placeholder="${CG.aba === 'ev' ? 'Buscar evento, OS, local ou técnico…' : 'Buscar técnico…'}" value="${esc(CG.q)}"></div>` : ''}
     ${CG.aba === 'ag' ? ((D.agenda || []).map(d => `<div class="card"><b>${esc(d.diaFmt)}</b> <span class="muted" style="font-size:12px">${esc(diaSem(d.dia))}</span>${d.eventos.map(e => `<div class="prow" style="flex-wrap:wrap"><div style="flex-basis:100%"><b style="font-size:14px">${esc(e.evento)}</b><div class="muted" style="font-size:12px">${esc([e.os, e.local, e.fase].filter(Boolean).join(' · '))}</div><div style="font-size:13px;margin-top:4px">${e.pessoas.map(esc).join(' · ')}</div></div></div>`).join('')}</div>`).join('') || '<div class="card muted">Ninguém escalado nos próximos 30 dias.</div>')
+    : CG.aba === 'alr' ? cgAlertaHtml()
     : CG.aba === 'cad' ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">👤 Cadastrar técnico novo</h3>
       <div class="muted" style="font-size:12px">Coloque o nome e o celular e mande o link pelo WhatsApp. O técnico preenche função e valor combinado, documentos, PIX e contato de emergência. A administração recebe um aviso.</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0">
@@ -1821,6 +1954,8 @@ function cgDraw() {
         <button class="btn" title="Copiar link" onclick="copiar(window.CGP[${j}].link)">📋</button></div>`; }).join('') || '<div class="muted">Ninguém encontrado.</div>'}</div>`}
     ${instalavel() ? '<button class="btn" style="width:100%;justify-content:center" onclick="instalarAgenda()">📲 Salvar na tela inicial</button>' : ''}
     <div class="foot">Acesso só para ver e enviar links, sem alterar a escala. Este acesso é só seu: não compartilhe.</div>`;
+  const at = document.getElementById('alrTxt'); if (at) at.oninput = () => { CG.alrTxt = at.value; };
+  const ae = document.getElementById('alrEv'); if (ae) ae.onchange = () => { CG.alrEv = ae.value; CG.alrRes = null; cgDraw(); };
   const q = document.getElementById('cgQ'); if (q) q.oninput = () => { CG.q = q.value; const p = q.selectionStart; cgDraw(); const n = document.getElementById('cgQ'); n.focus(); n.setSelectionRange(p, p); };
 }
 async function initCoordG() {
@@ -1830,7 +1965,7 @@ async function initCoordG() {
   try { const d = await apiGet({ f: 'coordg', k: COORDG }); const novo = JSON.stringify(d); if (!CG.d || novo !== JSON.stringify(CG.d)) { CG.d = d; cgDraw(); } lsSet(ck, novo); }
   catch (err) { if (!CG.d) document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; }
   document.getElementById('load').style.display = 'none';
-  setInterval(async () => { if (document.hidden || document.activeElement && document.activeElement.id === 'cgQ') return; try { CG.d = await apiGet({ f: 'coordg', k: COORDG }); cgDraw(); } catch (e) {} }, 120000);
+  setInterval(async () => { if (document.hidden || document.activeElement && (document.activeElement.id === 'cgQ' || document.activeElement.id === 'alrTxt')) return; try { CG.d = await apiGet({ f: 'coordg', k: COORDG }); cgDraw(); } catch (e) {} }, 120000);
 }
 
 /* ----- responsável pelo ponto (?c=, link recebido no WhatsApp) ----- */
@@ -2012,6 +2147,7 @@ if (CADR) {
   aplicarTema();
   initEvento();
   iniciarChat();
+  alertaIniciar();
 } else {
   aplicarTema();
   iniciarChat();
@@ -2019,6 +2155,7 @@ if (CADR) {
   refresh(true);
   loadPonto();
   loadCache();
+  alertaIniciar();
   setInterval(() => { if (!document.hidden) refresh(); }, 60000);
   // responsável pelo link da agenda: atualiza o ponto a cada minuto para os avisos (12 h, horários para confirmar)
   setInterval(() => { if (!document.hidden && S.ponto && S.ponto.coordena && S.ponto.coordena.length && document.getElementById('pm').style.display !== 'grid') loadPonto(); }, 60000);
