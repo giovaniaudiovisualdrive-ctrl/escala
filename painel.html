@@ -246,7 +246,7 @@ select.opsel.none{border-color:var(--amber);color:var(--amber)}
     <button class="nav" data-view="team"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2.3.2 4 1.8 4.5 4.5"/></svg>Agenda da equipe</button>
     <button class="nav" data-view="person"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><circle cx="12" cy="15" r="2.5"/></svg>Agenda individual</button>
     <button class="nav" data-view="issues"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17.5v.5"/></svg>Pendências<span class="badge" id="nbIssues">0</span></button>
-    <button class="nav" data-view="ponto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg>Ponto</button>
+    <button class="nav" data-view="ponto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg>Horários</button>
     <button class="nav" data-view="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5A8 8 0 1 1 21 12z"/></svg>Atendimento<span class="badge" id="nbChat" style="display:none">0</span></button>
     <button class="nav" data-view="assign"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="8" r="4"/><path d="M3 21c1-4 3.7-6 7-6 1.3 0 2.5.3 3.5.9M19 15v6M16 18h6"/></svg>Escalar técnico</button>
     <button class="nav" data-view="create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/></svg>Novo evento</button>
@@ -398,7 +398,7 @@ const realEvents = () => S.data.events.filter(e => !e.isTemplate);
 const divergent = () => realEvents().filter(e => e.computedStatus && norm(e.status) !== norm(e.computedStatus));
 
 /* ---------------- Navegação ---------------- */
-const TITLES = { overview: 'Visão geral', events: 'Eventos', team: 'Agenda da equipe', person: 'Agenda individual', ponto: 'Ponto (check-in / check-out)', chat: 'Atendimento', issues: 'Pendências', assign: 'Escalar técnico', create: 'Novo evento' };
+const TITLES = { overview: 'Visão geral', events: 'Eventos', team: 'Agenda da equipe', person: 'Agenda individual', ponto: 'Horários dos prestadores (check-in / check-out)', chat: 'Atendimento', issues: 'Pendências', assign: 'Escalar técnico', create: 'Novo evento' };
 document.querySelectorAll('.nav').forEach(b => b.onclick = () => go(b.dataset.view));
 function go(view) {
   S.view = view;
@@ -612,7 +612,7 @@ async function loadEvLocal(row) {
       </div>
       <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap"><label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)"><input type="checkbox" id="elQr" ${c.qr ? 'checked' : ''}> Exigir QR Code do responsável</label>
         <label style="display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)"><input type="checkbox" id="elMot" ${c.motorista ? 'checked' : ''}> 🚐 Permitir check-in de motorista</label>
-        <span class="dim" style="font-size:11px">Cada responsável recebe no WhatsApp um link só dele: mostra o QR Code (muda a cada 30 s), faz o próprio ponto e confere os horários. Tirar a pessoa daqui desliga o link na hora.</span></div>
+        <span class="dim" style="font-size:11px">Cada responsável recebe no WhatsApp um link só dele: mostra o QR Code (muda a cada 30 s), registra o próprio horário e confere os horários. Tirar a pessoa daqui desliga o link na hora.</span></div>
     </div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap"><button class="btn pri" id="elGo">Salvar local</button>
       <span class="dim" style="font-size:12px">${c.qr ? '▣ QR Code obrigatório · ' : ''}${c.lat ? '✅ Coordenada encontrada · ' + mapa : (c.localPadrao ? 'Sem endereço próprio: usa o local “' + esc(c.localPadrao.nome) + '” da aba LOCAIS.' : 'Sem endereço: o GPS é guardado, mas a distância não é conferida.')}${c.global ? ' · A regra geral já exige localização em todos os eventos.' : ''}</span></div>`;
@@ -813,7 +813,7 @@ async function linkCheckin(row) {
   if (!r.link) return toast('Publique o App da Web para gerar links.', true);
   const msg = `*Check-in / check-out · ${r.nome}*\nFaça seu check-in ao chegar e o check-out ao sair:\n${r.link}`;
   modal(`<h3>⏱ Link de check-in · ${esc(r.nome)}</h3>
-    <p class="muted" style="margin-top:0">Mande no grupo do evento. Serve para qualquer pessoa (freelancer ou fixo): ela digita o nome e registra entrada e saída. Os registros caem na aba <b>PONTO</b>.</p>
+    <p class="muted" style="margin-top:0">Mande no grupo do evento. Serve para qualquer pessoa (freelancer ou fixo): ela digita o nome e registra entrada e saída. Os registros caem na aba <b>HORÁRIOS PRESTADORES</b>.</p>
     <div class="lk" style="display:flex;gap:8px"><input class="ctl" readonly value="${esc(r.link)}" style="flex:1" onclick="this.select()"><button class="btn sm" onclick="copyText('${esc(r.link)}')">Copiar</button></div>
     <div class="acts"><button class="btn" onclick="closeModal()">Fechar</button><button class="btn pri" id="wGrp">💬 Enviar no WhatsApp</button></div>`);
   $('#wGrp').onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
@@ -826,9 +826,9 @@ async function loadPonto() {
 }
 function admCardHtml() {
   const a = S.adm || {};
-  if (a.erro) return `<div class="card" style="margin-bottom:16px"><h3>Administração do ponto</h3><div class="muted">⚠ ${esc(a.erro)}</div></div>`;
+  if (a.erro) return `<div class="card" style="margin-bottom:16px"><h3>Administração de horários</h3><div class="muted">⚠ ${esc(a.erro)}</div></div>`;
   const horas = Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === (a.hora || 20) ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('');
-  return `<div class="card" style="margin-bottom:16px"><h3>👩‍💼 Administração do ponto <span class="muted">· acesso só ao ponto, sem mexer na escala</span></h3>
+  return `<div class="card" style="margin-bottom:16px"><h3>👩‍💼 Administração de horários dos prestadores <span class="muted">· acesso só aos horários, sem mexer na escala</span></h3>
     <div class="f3" style="align-items:end">
       <div class="field"><label>E-mail da administradora</label><input class="ctl" id="admEmail" type="email" placeholder="adm@empresa.com.br" value="${esc(a.email || '')}"></div>
       <div><button class="btn pri" id="admSave">✉ Salvar e enviar acesso</button></div>
@@ -839,7 +839,7 @@ function admCardHtml() {
       <label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="admLemb" ${a.lembrete ? 'checked' : ''}> Lembrete diário por e-mail às</label>
       <select class="ctl" id="admHora" style="min-width:0;width:auto">${horas}</select>
       <button class="btn sm" id="admLembSave">Salvar lembrete</button>
-      <span class="dim" style="font-size:11px">Resumo do dia: check-ins, quem ficou sem check-out e quem estava escalado e não fez check-in. A planilha do ponto vai anexada.</span>
+      <span class="dim" style="font-size:11px">Resumo do dia: check-ins, quem ficou sem check-out e quem estava escalado e não fez check-in. A planilha de horários vai anexada.</span>
     </div></div>`;
 }
 function bindAdmCard() {
@@ -912,7 +912,7 @@ function vChat() {
   if (D.erro) { $('#content').innerHTML = `<div class="empty">⚠ ${esc(D.erro)}</div>`; return; }
   const cv = D.conversas.find(x => x.c === C.conv);
   $('#content').innerHTML = `
-  ${D.ativo ? '' : '<div class="row" style="background:var(--amberSoft);border-color:transparent;margin-bottom:12px"><span style="color:var(--amber)">O chat está <b>desativado</b>: os técnicos não veem o botão de atendimento. Ative em Ponto → ⚙ Regra.</span></div>'}
+  ${D.ativo ? '' : '<div class="row" style="background:var(--amberSoft);border-color:transparent;margin-bottom:12px"><span style="color:var(--amber)">O chat está <b>desativado</b>: os técnicos não veem o botão de atendimento. Ative em Horários → ⚙ Regra.</span></div>'}
   <div class="grid two" style="grid-template-columns:minmax(260px,.8fr) minmax(0,1.6fr)">
     <div class="card" style="padding:10px"><h3 style="padding:6px 6px 0">Conversas <span class="muted">· ${D.conversas.length}</span></h3><div class="list">
       ${D.conversas.map(x => `<div class="row" style="cursor:pointer;${x.c === C.conv ? 'border-color:var(--accent);background:var(--accentSoft)' : ''}" data-c="${esc(x.c)}" onclick="abrirConversa(this.dataset.c)">
@@ -923,7 +923,7 @@ function vChat() {
       <h3>${esc(cv.nome)} <span class="muted">· ${esc(cv.evento || cv.origem || '')}</span></h3>
       <div id="chatMsgs" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:4px;max-height:52vh">
         ${D.msgs.map(m => `<div style="align-self:${m.de === 'TÉCNICO' ? 'flex-start' : 'flex-end'};max-width:78%;background:${m.de === 'TÉCNICO' ? 'var(--panel2)' : 'var(--accentSoft)'};border:1px solid var(--line);border-radius:12px;padding:8px 11px">
-          <div style="white-space:pre-wrap">${esc(m.texto)}</div><div class="dim" style="font-size:10px;margin-top:3px">${m.de === 'TÉCNICO' ? esc(m.nome) : (m.origem === 'ADM' ? 'Administração do ponto' : 'Coordenação')} · ${esc(m.quando)}</div></div>`).join('')}
+          <div style="white-space:pre-wrap">${esc(m.texto)}</div><div class="dim" style="font-size:10px;margin-top:3px">${m.de === 'TÉCNICO' ? esc(m.nome) : (m.origem === 'ADM' ? 'Administração de horários' : 'Coordenação')} · ${esc(m.quando)}</div></div>`).join('')}
       </div>
       <div style="display:flex;gap:8px;margin-top:10px"><textarea class="ctl" id="chatTxt" rows="2" style="flex:1;resize:vertical" placeholder="Escreva a resposta…">${esc(C.txt)}</textarea><button class="btn pri" id="chatGo">Enviar</button></div>`
       : '<div class="empty" style="margin:auto">Escolha uma conversa à esquerda.</div>'}
@@ -1042,7 +1042,7 @@ function vAssign() {
       <div class="field"><label>Evento</label><select class="ctl" id="aEv">${evs.map(x => `<option value="${x.row}" ${x.row === A.row ? 'selected' : ''}>${esc(x.nome)} · ${esc(x.os)} (${esc(x.start)})</option>`).join('')}</select></div>
       <div class="f2"><div class="field"><label>Função</label><select class="ctl" id="aRole">${e.roles.map(r => `<option ${r.role === A.role ? 'selected' : ''}>${esc(r.role)}</option>`).join('')}</select></div>
       <div class="field"><label>Técnico</label><input class="ctl" id="aName" list="dlTeam" placeholder="Digite ou escolha ao lado" value="${esc(A.name)}" autocomplete="off"><datalist id="dlTeam">${D.team.map(m => `<option value="${esc(m.name)}">`).join('')}</datalist></div></div>
-      <div class="field"><label>Dias <span class="dim" style="text-transform:none;letter-spacing:0">· destacados = dias com atividade · ponto vermelho = técnico ocupado</span></label>
+      <div class="field"><label>Dias <span class="dim" style="text-transform:none;letter-spacing:0">· destacados = dias com atividade · bolinha vermelha = técnico ocupado</span></label>
         <div class="days" id="aDays">${dayBtns}</div>
         <div style="margin-top:8px;display:flex;gap:8px"><button class="btn sm" id="aAll">Dias do evento</button><button class="btn sm ghost" id="aNone">Limpar</button></div></div>
       ${me && A.days.some(d => busyOn(me, d).length) ? `<div class="row" style="border-color:rgba(255,91,95,.5);background:var(--redSoft)"><div class="grow"><b style="color:var(--red)">⚠ ${esc(me.name)} já está escalado(a):</b><div style="font-size:12px;margin-top:4px">${A.days.filter(d => busyOn(me, d).length).map(d => `Dia ${d}: ${busyOn(me, d).map(a => esc(a.evento) + ' (' + esc(a.role) + ')').join(', ')}`).join('<br>')}</div></div></div>` : ''}
@@ -1278,7 +1278,7 @@ else {
   if (IS_CONTROLE && lsG('bt_sessao')) {
     const b = document.createElement('button'); b.className = 'btn'; b.textContent = '⎋ Sair'; b.title = lsG('bt_sessao_nome') || '';
     b.onclick = () => { if (confirm('Sair deste aparelho?')) sairControle(); };
-    const ap = document.createElement('a'); ap.className = 'btn'; ap.textContent = '📱 App ADM'; ap.href = APP_URL; ap.title = 'Abrir o App ADM (administração do ponto e configurações)'; ap.style.textDecoration = 'none';
+    const ap = document.createElement('a'); ap.className = 'btn'; ap.textContent = '📱 App ADM'; ap.href = APP_URL; ap.title = 'Abrir o App ADM (administração de horários e configurações)'; ap.style.textDecoration = 'none';
     $('#btnReload').before(ap, b);
   }
 }

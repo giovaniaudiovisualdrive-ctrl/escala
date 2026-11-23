@@ -686,7 +686,7 @@ async function abrirConferir(ctx) {
       <div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${c.motorista ? '🚐 Check-in motorista' : c.tipo === 'SAÍDA' ? 'Check-out' : 'Check-in'}${c.role ? ' · ' + esc(c.role) : ''}</span>
         <span style="font-size:13px">${c.motorista ? `Saiu dirigindo <b>${esc(c.inf)}</b> · enviado ${esc(c.qr)}` : `Informou <b>${esc(c.inf)}</b> · QR lido ${esc(c.qr)} <span style="color:var(--amber)">(${difTxt(c.dif)})</span>`}</span>
         ${c.sit === SIT_PED ? '<span style="font-size:12px;color:var(--amber)">↩ Correção pedida: aguardando a pessoa mandar o horário certo.</span>' : ''}</div>
-      ${c.proprio ? '<span class="muted" style="font-size:12px">Seu horário: quem confirma é a administração do ponto.</span>' : `<button class="btn pri" onclick="confAcao(${i},'confirmar')">✔ Confirmar</button>`}
+      ${c.proprio ? '<span class="muted" style="font-size:12px">Seu horário: quem confirma é a administração de horários.</span>' : `<button class="btn pri" onclick="confAcao(${i},'confirmar')">✔ Confirmar</button>`}
       ${c.sit === SIT_AG && !c.proprio ? `<button class="btn" onclick="confAcao(${i},'pedir')">↩ Pedir correção</button>` : ''}
       ${ctx.a ? `<button class="btn" onclick="confCorrigir(${i})">✎ Corrigir</button>` : ''}
       ${c.wa && c.sit === SIT_PED ? `<a class="btn" style="text-decoration:none;color:inherit" href="${esc(c.wa)}" target="_blank" rel="noopener">📲 Avisar no WhatsApp</a>` : ''}
@@ -768,7 +768,7 @@ async function abrirContestacao(ctx) {
   const minhas = D.minhas.map(c => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b style="font-size:14px">Quinzena ${esc(c.quinzena)}${c.evento ? ' · ' + esc(c.evento) : ''}</b>
     <span class="muted" style="font-size:12px">Enviada ${esc(c.criada)} · trabalhou ${esc(c.trab)} · recebeu ${esc(c.receb)}</span>${contStHtml(c)}
     ${c.resposta ? `<div style="font-size:13px;margin-top:6px;padding:8px 10px;border-radius:9px;background:var(--panel)"><b>Resposta da administração:</b> ${esc(c.resposta)}${c.previsao ? `<br><b>Previsão de pagamento:</b> ${esc(c.previsao)}` : ''}</div>` : ''}</div></div>`).join('');
-  const resumo = z => z && typeof z.escalados === 'number' ? `Na escala: <b>${z.escalados}</b> dia(s) · no ponto: <b>${z.diariasPonto}</b> diária(s)${z.eventos.length ? ' · ' + esc(z.eventos.join(', ')) : ''}` : '';
+  const resumo = z => z && typeof z.escalados === 'number' ? `Na escala: <b>${z.escalados}</b> dia(s) · nos horários: <b>${z.diariasPonto}</b> diária(s)${z.eventos.length ? ' · ' + esc(z.eventos.join(', ')) : ''}` : '';
   el.innerHTML = `<div class="box"><h3>💰 Contestação de diárias</h3>
     <div class="muted" style="font-size:12px">${esc(D.regra)} Se você não recebeu a quantidade certa de diárias, conte aqui: a administração é avisada e responde pelo WhatsApp.</div>
     ${minhas ? `<div class="muted" style="font-size:11px;margin-top:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Minhas contestações</div>${minhas}` : ''}
@@ -970,8 +970,8 @@ function abrirAddFuncao() {
 /* ----- ponto dentro da agenda individual ----- */
 function pontoCardHtml() {
   const p = S.ponto;
-  if (!p) return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3><div class="muted" style="font-size:13px">Carregando…</div></div>`;
-  if (p.erro) return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3><div class="muted" style="font-size:13px">⚠ ${esc(p.erro)}</div></div>`;
+  if (!p) return `<div class="card ponto"><h3>⏱ Horário de hoje</h3><div class="muted" style="font-size:13px">Carregando…</div></div>`;
+  if (p.erro) return `<div class="card ponto"><h3>⏱ Horário de hoje</h3><div class="muted" style="font-size:13px">⚠ ${esc(p.erro)}</div></div>`;
   const hojeP = p.hoje || nowLocal().slice(0, 10);
   // check-ins guardados sem sinal (sem check-out guardado depois) aparecem como abertos
   const filaP = filaLer().filter(x => x.evento && x.body && x.body.t === TOKEN);
@@ -999,7 +999,7 @@ function pontoCardHtml() {
     <button class="btn" onclick="abrirConferir({ t: TOKEN, ev: window.PQ[${i}].key, depois: loadPonto })">⏱ Conferir${c.pendentes ? ` <span class="nb">${c.pendentes}</span>` : ''}</button>
     ${c.alertas && c.alertas.length ? `<div style="flex-basis:100%">${alertasHtml(c.alertas)}</div>` : ''}</div>`).join('');
   const scanOutro = !p.abertos.length ? `<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="${act({ acao: 'checkin', qr: true, evento: '', sub: '', role: '', exigir: false, depois: loadPonto })}">📷 Check-in com QR Code (outro evento)</button>` : '';
-  return `${p.semSinal ? '<div class="msg-ok" style="background:rgba(245,184,61,.15);color:var(--amber);border-color:var(--amber);margin-bottom:10px">📶 Sem sinal: mostrando o ponto guardado no celular. O que você registrar fica guardado e vai quando a internet voltar.</div>' : ''}<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${corr}${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
+  return `${p.semSinal ? '<div class="msg-ok" style="background:rgba(245,184,61,.15);color:var(--amber);border-color:var(--amber);margin-bottom:10px">📶 Sem sinal: mostrando os horários guardados no celular. O que você registrar fica guardado e vai quando a internet voltar.</div>' : ''}<div class="card ponto"><h3>⏱ Horário de hoje</h3>${corr}${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
     ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}
     ${p.abertos.length || p.recentes.length ? '<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="abrirRelatorio({ t: TOKEN })">📄 Relatório de horas por evento</button>' : ''}
     <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirFechamento()">🧾 Minhas diárias por quinzena</button>
@@ -1073,7 +1073,7 @@ async function initEvento() {
   document.getElementById('load').style.display = 'none';
 }
 
-/* ----- administração do ponto (?a=) ----- */
+/* ----- administração de horários (?a=) ----- */
 const ADM = new URLSearchParams(location.search).get('a') || '';
 /* ----- fechamento quinzenal (ADM e agenda do técnico) ----- */
 function brlC(v) { return 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
@@ -1091,7 +1091,7 @@ function fechPeriodoHtml(D, F, pre) {
 }
 function fechEventoHtml(e) {
   return `<div style="padding:8px 0;border-top:1px dashed var(--line);font-size:13px"><b>${esc(e.evento)}</b> <span class="muted">· ${esc(e.dias)}${e.funcoes ? ' · ' + esc(e.funcoes) : ''}</span><br>
-    <span>${!e.diarias && e.escala && !e.pend ? '<span style="color:var(--amber)">⚠ escalado, sem registro no ponto</span> · ' : ''}${e.diarias} diária(s)${e.extra ? ' · HE ' + fmtH(e.extra) : ''}${e.refeicao ? ' · refeição ' + brlC(e.refeicao) : ''}${e.valor ? ' · <b>' + brlC(e.valor) + '</b>' : ''}${e.semValor ? ` · <span style="color:var(--amber)">${e.semValor} sem cachê cadastrado</span>` : ''}${e.pend ? ` · <span style="color:var(--amber)">${e.pend} pendente(s)</span>` : ''}</span>
+    <span>${!e.diarias && e.escala && !e.pend ? '<span style="color:var(--amber)">⚠ escalado, sem registro de horário</span> · ' : ''}${e.diarias} diária(s)${e.extra ? ' · HE ' + fmtH(e.extra) : ''}${e.refeicao ? ' · refeição ' + brlC(e.refeicao) : ''}${e.valor ? ' · <b>' + brlC(e.valor) + '</b>' : ''}${e.semValor ? ` · <span style="color:var(--amber)">${e.semValor} sem cachê cadastrado</span>` : ''}${e.pend ? ` · <span style="color:var(--amber)">${e.pend} pendente(s)</span>` : ''}</span>
     ${e.fora.map(f => `<div style="font-size:12px;margin-top:4px;color:var(--amber)">↪ ${esc(f.dias)} (${f.n} dia${f.n > 1 ? 's' : ''}) ${f.depois ? 'ficam para' : 'entram na'} a quinzena ${esc(f.quinzena)} · pagamento até ${esc(f.pagFmt)}</div>`).join('')}</div>`;
 }
 function fechCabecalho(D) {
@@ -1118,7 +1118,7 @@ function fechAdmHtml() {
   D.pessoas.forEach(p => p.obs.forEach(o => obs.push([p.nome, o])));
   const prox = obs.filter(([, o]) => o.startsWith('📌')), outras = obs.filter(([, o]) => !o.startsWith('📌'));
   const linhas = D.pessoas.map(p => `<div class="prow" style="flex-wrap:wrap;cursor:pointer" onclick="fcAbrir('${esc(p.key)}')"><div class="g" style="flex:1"><b>${esc(p.nome)}</b>
-      <span class="muted" style="font-size:12px">${p.eventos.length} evento(s) · escalado ${p.tot.escala} dia(s) · ${p.tot.diarias} diária(s)${p.tot.semRegistro ? ` · <span style="color:var(--amber)">${p.tot.semRegistro} sem ponto</span>` : ''}${p.tot.extra ? ' · HE ' + fmtH(p.tot.extra) : ''}${p.funcoes ? ' · ' + esc(p.funcoes) : ''}</span>
+      <span class="muted" style="font-size:12px">${p.eventos.length} evento(s) · escalado ${p.tot.escala} dia(s) · ${p.tot.diarias} diária(s)${p.tot.semRegistro ? ` · <span style="color:var(--amber)">${p.tot.semRegistro} sem registro</span>` : ''}${p.tot.extra ? ' · HE ' + fmtH(p.tot.extra) : ''}${p.funcoes ? ' · ' + esc(p.funcoes) : ''}</span>
       ${p.obs.some(o => o.startsWith('📌')) ? '<span style="font-size:12px;color:var(--amber)">↪ tem diárias na próxima quinzena</span>' : ''}</div>
       <div style="text-align:right"><b>${brlC(p.total)}</b>${p.tot.refeicao ? `<div class="muted" style="font-size:11px">inclui refeição ${brlC(p.tot.refeicao)}</div>` : ''}</div>
       ${FC.aberto[p.key] ? `<div style="flex-basis:100%">${p.eventos.map(fechEventoHtml).join('')}</div>` : ''}</div>`).join('');
@@ -1131,7 +1131,7 @@ function fechAdmHtml() {
         <div><div class="muted" style="font-size:11px">REFEIÇÃO</div><b style="font-size:18px">${brlC(T.refeicao)}</b></div>
         <div><div class="muted" style="font-size:11px">TOTAL</div><b style="font-size:18px;color:var(--accent)">${brlC(T.valor + T.refeicao)}</b></div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" onclick="fcCsv()">⬇ Baixar planilha (CSV)</button><button class="btn" onclick="fechImprimir(FC.D, true)">🖨 Imprimir / PDF</button></div></div>
-    <div class="card">${linhas || '<div class="muted">Ninguém com escala ou ponto neste período.</div>'}</div>
+    <div class="card">${linhas || '<div class="muted">Ninguém com escala ou horário registrado neste período.</div>'}</div>
     ${prox.length ? `<div class="card" style="border-color:var(--amber)"><b>📌 Diárias que ficam para outra quinzena</b>
       <div class="muted" style="font-size:12px;margin-bottom:6px">Eventos que cruzam a virada da quinzena: só os dias dentro do período entram neste fechamento.</div>
       ${prox.map(([n, o]) => `<div style="font-size:13px;padding:5px 0;border-top:1px dashed var(--line)"><b>${esc(n)}</b> — ${esc(o.replace(/^📌\s*/, ''))}</div>`).join('')}</div>` : ''}
@@ -1207,7 +1207,7 @@ function admCsv() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\r\n')], { type: 'text/csv' }));
   const ev = AD.d.eventos.find(e => e.key === AD.ev);
-  a.download = 'ponto' + (ev ? '-' + norm(ev.nome).replace(/[^A-Z0-9]+/g, '-').toLowerCase() : '') + '.csv';
+  a.download = 'horarios' + (ev ? '-' + norm(ev.nome).replace(/[^A-Z0-9]+/g, '-').toLowerCase() : '') + '.csv';
   document.body.appendChild(a); a.click(); a.remove();
 }
 /* ----- ⚙ Configurações → Aparência ----- */
@@ -1573,11 +1573,11 @@ function admDraw() {
       <div id="lMsg"></div><button class="btn pri" style="margin-top:12px" id="lGo">Salvar local</button></div>`;
   }
   app.style.maxWidth = '980px';
-  app.innerHTML = `<header>${logoHtml()}<div><h1>Administração do ponto</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
+  app.innerHTML = `<header>${logoHtml()}<div><h1>Administração de horários</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
     ${AD.velho ? '<div id="admVelho" class="muted" style="font-size:12px;margin:0 0 10px">⟳ Atualizando com os dados mais novos…</div>' : ''}
     ${nCont && AD.tab !== 'cont' ? `<div class="card" style="border-color:var(--amber);cursor:pointer;padding:12px 16px" onclick="AD.tab='cont';admDraw()"><b>💰 ${nCont} ${nCont > 1 ? 'contestações' : 'contestação'} de diárias aguardando resposta</b> <span class="muted" style="font-size:12px">· toque para ver</span></div>` : ''}
     <div class="tabs" style="flex-wrap:wrap">${tabs.map(([k, l]) => `<button class="btn ${AD.tab === k ? 'on' : ''}" onclick="AD.tab='${k}';${k === 'conv' ? 'CVS.d=null;' : ''}admDraw()">${l}</button>`).join('')}</div>${body}
-    <div class="foot">Acesso só ao ponto. Para mudar a escala, fale com a coordenação.</div>`;
+    <div class="foot">Acesso só aos horários. Para mudar a escala, fale com a coordenação.</div>`;
   if (AD.tab === 'reg') {
     document.getElementById('fEv').onchange = e => { AD.ev = e.target.value; admDraw(); };
     const fq = document.getElementById('fQ'); fq.oninput = () => { AD.q = fq.value; const p = fq.selectionStart; admDraw(); const n = document.getElementById('fQ'); n.focus(); n.setSelectionRange(p, p); };
@@ -1659,7 +1659,7 @@ function admEvLocal(e) {
     <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vQr" type="checkbox" style="width:auto;margin:0" ${e.cfgQR ? 'checked' : ''}> Exigir QR Code do responsável (check-in e check-out)</label>
     <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="vMot" type="checkbox" style="width:auto;margin:0" ${e.cfgMotorista ? 'checked' : ''}> 🚐 Permitir check-in de motorista neste evento</label>
     <div class="muted" style="font-size:12px;margin-top:4px">Quem dirige levando a equipe faz o check-in na saída, sem QR Code e sem conferir distância. O horário vai para o responsável confirmar.</div>
-    <div class="muted" style="font-size:12px;margin-top:8px">Cada responsável recebe no WhatsApp um link só dele: mostra o QR Code (muda a cada 30 s), faz o próprio ponto e confere os horários. Tirar a pessoa daqui desliga o link na hora.</div>
+    <div class="muted" style="font-size:12px;margin-top:8px">Cada responsável recebe no WhatsApp um link só dele: mostra o QR Code (muda a cada 30 s), registra o próprio horário e confere os horários. Tirar a pessoa daqui desliga o link na hora.</div>
     <div id="vMsg"></div>
     <div class="acts"><button class="btn" onclick="closeP();admCarregar().then(admDraw)">Fechar</button><button class="btn pri" id="vGo">Salvar</button></div></div>`;
   el.style.display = 'grid';
@@ -1812,7 +1812,7 @@ async function convTel(ei, pi) {
   catch (err) { alert(err.message || err); }
 }
 async function initAdm() {
-  document.title = 'Administração do ponto';
+  document.title = 'Administração de horários';
   const ck = 'bt_cache_adm_' + ADM.slice(-8);
   try { const c = JSON.parse(lsGet(ck) || 'null'); if (c && c.cfg) { AD.d = c; AD.velho = true; admDraw(); document.getElementById('load').style.display = 'none'; } } catch (e) { /* sem cache */ }
   try {
@@ -2040,7 +2040,7 @@ function cgDraw() {
   const pessoas = D.equipe.filter(p => !f || norm(p.nome).includes(f));
   app.innerHTML = `<header>${logoHtml()}<div><h1>Coordenação</h1><div class="sub">${esc(D.nome)} · escala e links</div></div></header>
     ${faixaTema()}
-    ${D.qr ? `<a class="btn pri big" style="width:100%;justify-content:center;text-decoration:none;color:#fff;margin-bottom:12px;box-sizing:border-box" href="${esc(D.qr)}">▣ QR Code e conferência dos horários</a>` : (pode('qr') ? '<div class="card muted" style="font-size:13px">▣ O QR Code aparece aqui quando você for responsável pelo ponto de algum evento.</div>' : '')}
+    ${D.qr ? `<a class="btn pri big" style="width:100%;justify-content:center;text-decoration:none;color:#fff;margin-bottom:12px;box-sizing:border-box" href="${esc(D.qr)}">▣ QR Code e conferência dos horários</a>` : (pode('qr') ? '<div class="card muted" style="font-size:13px">▣ O QR Code aparece aqui quando você for responsável pelos horários de algum evento.</div>' : '')}
     <div class="tabs" style="flex-wrap:wrap">${abas.map(([k, l]) => `<button class="btn ${CG.aba === k ? 'on' : ''}" onclick="CG.aba='${k}';CG.abaUser=1;cgDraw()">${l}</button>`).join('')}</div>
     ${CG.aba === 'ev' || CG.aba === 'eq' ? `<div class="card"><input id="cgQ" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:15px" placeholder="${CG.aba === 'ev' ? 'Buscar evento, OS, local ou técnico…' : 'Buscar técnico…'}" value="${esc(CG.q)}"></div>` : ''}
     ${CG.aba === 'ag' ? ((D.agenda || []).map(d => `<div class="card"><b>${esc(d.diaFmt)}</b> <span class="muted" style="font-size:12px">${esc(diaSem(d.dia))}</span>${d.eventos.map(e => `<div class="prow" style="flex-wrap:wrap"><div style="flex-basis:100%"><b style="font-size:14px">${esc(e.evento)}</b><div class="muted" style="font-size:12px">${esc([e.os, e.local, e.fase].filter(Boolean).join(' · '))}</div><div style="font-size:13px;margin-top:4px">${e.pessoas.map(esc).join(' · ')}</div></div></div>`).join('')}</div>`).join('') || '<div class="card muted">Ninguém escalado nos próximos 30 dias.</div>')
@@ -2078,17 +2078,17 @@ async function initCoordG() {
   setInterval(async () => { if (document.hidden || document.activeElement && (document.activeElement.id === 'cgQ' || document.activeElement.id === 'alrTxt')) return; try { CG.d = await apiGet({ f: 'coordg', k: COORDG }); cgDraw(); } catch (e) {} }, 120000);
 }
 
-/* ----- responsável pelo ponto (?c=, link recebido no WhatsApp) ----- */
+/* ----- responsável pelos horários (?c=, link recebido no WhatsApp) ----- */
 const COORD = new URLSearchParams(location.search).get('c') || '';
 async function initCoord() {
-  document.title = 'Responsável pelo ponto';
+  document.title = 'Responsável pelos horários';
   const app = document.getElementById('app');
   let D = null;
   const carregar = async () => { D = await apiGet({ f: 'coord', c: COORD }); };
   const draw = () => {
     window.CE = D.eventos;
     const ativos = D.eventos.filter(e => e.ativo), prox = D.eventos.filter(e => !e.ativo);
-    app.innerHTML = `<header>${logoHtml()}<div><h1>${esc(D.nome)}</h1><div class="sub">Responsável pelo ponto · ${esc(D.tel)}</div></div></header>
+    app.innerHTML = `<header>${logoHtml()}<div><h1>${esc(D.nome)}</h1><div class="sub">Responsável pelos horários · ${esc(D.tel)}</div></div></header>
       ${faixaTema()}
       ${ativos.map(e => { const i = D.eventos.indexOf(e), ag = e.conferir.filter(x => x.sit === SIT_AG).length, ped = e.conferir.length - ag;
         return `<div class="card"><h3 style="margin:0 0 4px">${esc(e.nome)}</h3><div class="muted" style="font-size:12px">${esc([e.os, e.local, e.start + (e.end !== e.start ? ' a ' + e.end : '')].filter(Boolean).join(' · '))}${e.qr ? ' · ▣ QR Code obrigatório' : ' · ▣ QR Code ainda não é obrigatório'}</div>
@@ -2112,7 +2112,7 @@ async function initCoord() {
   try { await carregar(); draw(); alertaNovo(D.eventos.reduce((n, e) => n + e.conferir.filter(x => x.sit === SIT_AG).length, 0), 'coord'); alerta12h([].concat(...D.eventos.map(e => e.alertas || [])), 'coord'); }
   catch (err) { app.innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; }
   document.getElementById('load').style.display = 'none';
-  // mantém a lista e o passe do próprio ponto em dia (sem atrapalhar o QR ou um formulário aberto)
+  // mantém a lista e o passe do próprio horário em dia (sem atrapalhar o QR ou um formulário aberto)
   const quieto = () => !document.hidden && !QRT && document.getElementById('pm').style.display !== 'grid';
   setInterval(() => { if (quieto()) window.COORD_RELOAD(); }, 20000);
   document.addEventListener('visibilitychange', () => { if (quieto()) window.COORD_RELOAD(); });
