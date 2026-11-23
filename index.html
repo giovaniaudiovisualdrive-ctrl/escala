@@ -607,7 +607,7 @@ async function mostrarQR(ctx) {
   pararQR();
   const el = document.getElementById('pm');
   el.innerHTML = '<div class="box qrtela"><h3>Preparando o QR Code…</h3><div class="spin" style="margin:18px auto"></div></div>'; el.style.display = 'grid';
-  const pedir = () => apiGet(Object.assign({ f: 'qr', ev: ctx.ev }, ctx.a ? { a: ctx.a } : ctx.c ? { c: ctx.c } : { t: ctx.t }));
+  const pedir = () => apiGet(Object.assign({ f: 'qr', ev: ctx.ev }, ctx.a ? { a: ctx.a } : ctx.c ? { c: ctx.c } : ctx.k ? { k: ctx.k } : { t: ctx.t }));
   let s, off = 0, ult = -1;
   try { await carregarScript(LIB_QR, () => window.qrcode); const t0 = Date.now(); s = await pedir(); off = s.agora - (t0 + Date.now()) / 2; }
   catch (e) { el.innerHTML = `<div class="box"><h3>QR Code</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts"><button class="btn pri" onclick="fecharQR()">Fechar</button></div></div>`; return; }
@@ -671,7 +671,7 @@ const SIT_AG = 'AGUARDANDO COORDENADOR', SIT_PED = 'CORREÇÃO PEDIDA';
 const difTxt = m => { const a = Math.abs(m); return (a >= 60 ? fmtH(a / 60) : a + ' min') + (m < 0 ? ' antes' : ' depois') + ' do QR'; };
 /** ctx = { c | t | a, ev, nome, depois?, voltar? } */
 async function abrirConferir(ctx) {
-  const el = document.getElementById('pm'), auth = ctx.a ? { a: ctx.a } : ctx.c ? { c: ctx.c } : { t: ctx.t };
+  const el = document.getElementById('pm'), auth = ctx.a ? { a: ctx.a } : ctx.c ? { c: ctx.c } : ctx.k ? { k: ctx.k } : { t: ctx.t };
   window.CFX = ctx;
   if (el.style.display !== 'grid' || !document.getElementById('cfLista')) { el.innerHTML = '<div class="box"><h3>⏱ Conferir horários</h3><div class="spin" style="margin:18px auto"></div></div>'; el.style.display = 'grid'; }
   let d;
@@ -1003,6 +1003,7 @@ function pontoCardHtml() {
     ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}
     ${p.abertos.length || p.recentes.length ? '<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="abrirRelatorio({ t: TOKEN })">📄 Relatório de horas por evento</button>' : ''}
     <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirFechamento()">🧾 Minhas diárias por quinzena</button>
+    <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirMeusDados()">👤 Meus dados (cadastro e PIX)</button>
     <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirContestacao({ t: TOKEN })">💰 Contestação de diárias</button></div>`;
 }
 async function loadPonto() {
@@ -1571,6 +1572,7 @@ function admDraw() {
       ${window.ACAD.map((c, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${esc(c.telFmt)}</span>${stCad(c)}</div>
         <a class="btn ${c.status === 'PREENCHIDO' ? '' : 'pri'}" style="text-decoration:none;color:inherit" href="${esc(c.waLink)}" target="_blank" rel="noopener">📲 ${c.status === 'PREENCHIDO' ? 'Reenviar' : 'WhatsApp'}</a>
         <button class="btn" onclick="copiar(window.ACAD[${i}].link)">Copiar link</button>
+        <button class="btn" onclick="admCadEditar(${i})">✏ Editar</button>
         <button class="btn" onclick="admCadDel(${i})">🗑</button></div>`).join('')}</div>
     <div class="card"><h3 style="margin:0 0 6px;font-size:15px">🍽️ Valores de refeição</h3>
       <div class="muted" style="font-size:12px">Aparecem no link de cadastro e na agenda de cada técnico.</div>
@@ -1922,56 +1924,57 @@ function mascara(el, tipo) {
     if (tipo === 'tel') { d = d.slice(0, 11); el.value = d.length > 10 ? d.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3') : d.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3').replace(/[-(]\s*$/, ''); }
   });
 }
-async function initCadastro() {
-  document.title = 'Cadastro do técnico';
-  const app = document.getElementById('app');
-  let D;
-  try { D = await apiGet({ f: 'cad', cd: CADR }); }
-  catch (err) { app.innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; document.getElementById('load').style.display = 'none'; return; }
-  document.getElementById('load').style.display = 'none';
-  const campo = (id, label, extra = '', obr = false) => `<label>${label}${obr ? ' <span style="color:var(--red)">*</span>' : ''}<input id="${id}" ${extra}></label>`;
+/* formulário de cadastro: link do técnico (?r=), edição pela ADM e "Meus dados" na agenda */
+function cadForm(app, D, cfg) {
+  const P = D.dados || {};
+  const campo = (id, label, extra = '', obr = false, val = '') => `<label>${label}${obr && !cfg.parcial ? ' <span style="color:var(--red)">*</span>' : ''}<input id="${id}" ${extra} value="${esc(val || '')}"></label>`;
   const NRS = ['NR-06', 'NR-10', 'NR-11', 'NR-12', 'NR-18', 'NR-33', 'NR-35'];
-  app.innerHTML = `<header>${logoHtml()}<div><h1>Cadastro</h1><div class="sub">${esc(D.nome)} · dados para cadastro e pagamentos</div></div></header>
-    ${D.preenchido ? `<div class="card" style="border-color:var(--accent)"><b>✅ Você já enviou o cadastro em ${esc(D.preenchido)}.</b><div class="muted" style="font-size:13px">Se precisar corrigir, preencha de novo e envie: os dados novos substituem os anteriores.</div></div>` : ''}
-    <div class="card"><div class="muted" style="font-size:13px">Por favor, preencha seus dados. Eles ficam só com a administração e são usados para o seu cadastro e para os pagamentos. Campos com <span style="color:var(--red)">*</span> são obrigatórios.</div>
+  const nrsTem = String(P.nrs || '').split(/,\s*/).map(x => x.trim()).filter(Boolean);
+  const nrsOut = nrsTem.filter(x => NRS.indexOf(x) < 0).join(', ');
+  app.innerHTML = `<header>${logoHtml()}<div><h1>${esc(cfg.titulo)}</h1><div class="sub">${esc(cfg.sub)}</div></div></header>
+    ${cfg.voltar ? '<button class="btn" id="fVoltar" style="margin-bottom:10px">← Voltar</button>' : ''}
+    ${cfg.aviso || ''}
+    <div class="card"><div class="muted" style="font-size:13px">${esc(cfg.texto)}${cfg.parcial ? '' : ' Campos com <span style="color:var(--red)">*</span> são obrigatórios.'}</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0">
-        <label>Funções e valor combinado (diária) <span style="color:var(--red)">*</span></label>
-        <div class="muted" style="font-size:12px;margin-top:4px">Coloque cada função que você faz com o valor que foi combinado. Ex.: PPT 450 · RESOLUME 600 · PROCESSAMENTO/RESOLUME 700.</div>
+        <label>Funções e valor combinado (diária)${cfg.parcial ? '' : ' <span style="color:var(--red)">*</span>'}</label>
+        <div class="muted" style="font-size:12px;margin-top:4px">Cada função com o valor combinado. Ex.: PPT 450 · RESOLUME 600 · PROCESSAMENTO/RESOLUME 700.</div>
         <div id="fFuns"></div>
         <button class="btn" type="button" id="fAddFun" style="margin-top:8px">➕ Adicionar função</button>
         ${D.refeicao ? `<div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--panel2);font-size:13px">🍽️ <b>Refeição:</b> ${esc(D.refeicao.txt)}</div>` : ''}
-        ${campo('fNome', 'Nome completo', 'autocapitalize="words" autocomplete="name"', true)}
-        ${campo('fRg', 'RG', 'inputmode="text"')}
-        ${campo('fCpf', 'CPF', 'inputmode="numeric" placeholder="000.000.000-00"', true)}
-        ${campo('fCnpj', 'CNPJ (se tiver)', 'inputmode="numeric" placeholder="00.000.000/0000-00"')}
-        ${campo('fNasc', 'Data de nascimento', 'type="date"', true)}
-        ${campo('fTel', 'Telefone (WhatsApp)', `type="tel" inputmode="tel" value="${esc(D.telFmt || '')}"`, true)}
-        ${campo('fEnd', 'Endereço (rua, número, complemento, bairro, cidade e CEP)', 'autocomplete="street-address" placeholder="Rua Exemplo, 123, apto 4 · Bairro · São Paulo · 01234-567"', true)}
-        ${campo('fTelE', 'Telefone de emergência', 'type="tel" inputmode="tel"')}
-        ${campo('fCont', 'Nome do contato de emergência', 'autocapitalize="words"')}
-        ${campo('fPix', 'PIX (chave)', 'placeholder="CPF, celular, e-mail ou chave aleatória"', true)}
-        ${campo('fMail', 'E-mail', 'type="email" inputmode="email" autocomplete="email"')}
+        ${campo('fNome', 'Nome completo', 'autocapitalize="words" autocomplete="name"', true, P.completo)}
+        ${campo('fRg', 'RG', 'inputmode="text"', false, P.rg)}
+        ${campo('fCpf', 'CPF', 'inputmode="numeric" placeholder="000.000.000-00"', true, P.cpf)}
+        ${campo('fCnpj', 'CNPJ (se tiver)', 'inputmode="numeric" placeholder="00.000.000/0000-00"', false, P.cnpj)}
+        ${campo('fNasc', 'Data de nascimento', 'type="date"', true, P.nasc)}
+        ${campo('fTel', 'Telefone (WhatsApp)', 'type="tel" inputmode="tel"', true, P.tel || D.telFmt)}
+        ${campo('fEnd', 'Endereço (rua, número, complemento, bairro, cidade e CEP)', 'autocomplete="street-address" placeholder="Rua Exemplo, 123, apto 4 · Bairro · São Paulo · 01234-567"', true, P.endereco)}
+        ${campo('fTelE', 'Telefone de emergência', 'type="tel" inputmode="tel"', false, P.telEmerg)}
+        ${campo('fCont', 'Nome do contato de emergência', 'autocapitalize="words"', false, P.contato)}
+        ${campo('fPix', 'PIX (chave)', 'placeholder="CPF, celular, e-mail ou chave aleatória"', true, P.pix)}
+        ${campo('fMail', 'E-mail', 'type="email" inputmode="email" autocomplete="email"', false, P.email)}
         <label>NRs (marque as que você tem)</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${NRS.map(n => `<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-size:14px;color:var(--text);margin:0;border:1px solid var(--line);border-radius:999px;padding:6px 12px"><input type="checkbox" class="fNr" value="${n}" style="width:auto;margin:0">${n}</label>`).join('')}</div>
-        ${campo('fNrOut', 'Outras NRs / certificados', 'placeholder="Ex.: NR-20, brigada…"')}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${NRS.map(n => `<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-size:14px;color:var(--text);margin:0;border:1px solid var(--line);border-radius:999px;padding:6px 12px"><input type="checkbox" class="fNr" value="${n}" ${nrsTem.indexOf(n) >= 0 ? 'checked' : ''} style="width:auto;margin:0">${n}</label>`).join('')}</div>
+        ${campo('fNrOut', 'Outras NRs / certificados', 'placeholder="Ex.: NR-20, brigada…"', false, nrsOut)}
       </div>
       <div id="fMsg"></div>
-      <button class="btn pri big" style="width:100%;justify-content:center;margin-top:14px" id="fGo">📨 Enviar cadastro</button></div>
-    <div class="foot">Seus dados são tratados com sigilo e usados só para cadastro e pagamento.</div>`;
-  const funBox = document.getElementById('fFuns');
-  const linhaFun = () => {
+      <button class="btn pri big" style="width:100%;justify-content:center;margin-top:14px" id="fGo">${esc(cfg.botao)}</button></div>
+    <div class="foot">Os dados são tratados com sigilo e usados só para cadastro e pagamento.</div>`;
+  if (cfg.voltar) document.getElementById('fVoltar').onclick = cfg.voltar;
+  const funBox = document.getElementById('fFuns'), opc = D.funcoes || [];
+  const linhaFun = (pre) => {
     const d = document.createElement('div'); d.className = 'funrow';
     d.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px';
-    d.innerHTML = `<select class="fF" style="flex:2;min-width:0;margin:0"><option value="">Função…</option>${(D.funcoes || []).map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}<option value="OUTRA">OUTRA</option></select>
-      <input class="fV" inputmode="decimal" placeholder="R$" style="flex:0 0 90px;width:90px;margin:0">
+    const f = pre ? String(pre.funcao || '').toUpperCase() : '', naLista = !f || opc.indexOf(f) >= 0;
+    d.innerHTML = `<select class="fF" style="flex:2;min-width:0;margin:0"><option value="">Função…</option>${opc.map(o => `<option value="${esc(o)}" ${o === f ? 'selected' : ''}>${esc(o)}</option>`).join('')}<option value="OUTRA" ${naLista ? '' : 'selected'}>OUTRA</option></select>
+      <input class="fV" inputmode="decimal" placeholder="R$" style="flex:0 0 90px;width:90px;margin:0" value="${pre && pre.valor ? esc(String(pre.valor).replace('.', ',')) : ''}">
       <button class="btn fX" type="button" title="Tirar" style="padding:10px 12px">🗑</button>
-      <input class="fO" placeholder="Descreva a função" autocapitalize="characters" style="flex-basis:100%;margin:0;display:none">`;
+      <input class="fO" placeholder="Descreva a função" autocapitalize="characters" style="flex-basis:100%;margin:0;display:${naLista ? 'none' : ''}" value="${naLista ? '' : esc(f)}">`;
     d.querySelector('.fF').onchange = ev => { const o = d.querySelector('.fO'); o.style.display = ev.target.value === 'OUTRA' ? '' : 'none'; if (ev.target.value === 'OUTRA') o.focus(); };
     d.querySelector('.fX').onclick = () => { if (funBox.children.length > 1) d.remove(); else { d.querySelector('.fF').value = ''; d.querySelector('.fV').value = ''; } };
     funBox.appendChild(d);
   };
-  linhaFun();
-  document.getElementById('fAddFun').onclick = linhaFun;
+  (P.funcoes && P.funcoes.length ? P.funcoes : [null]).forEach(linhaFun);
+  document.getElementById('fAddFun').onclick = () => linhaFun();
   mascara(document.getElementById('fCpf'), 'cpf'); mascara(document.getElementById('fCnpj'), 'cnpj');
   mascara(document.getElementById('fTel'), 'tel'); mascara(document.getElementById('fTelE'), 'tel');
   const val = id => document.getElementById(id).value;
@@ -1981,13 +1984,49 @@ async function initCadastro() {
     b.disabled = true; m.innerHTML = '<div class="muted" style="margin-top:10px">Enviando…</div>';
     try {
       const funcoes = [...funBox.querySelectorAll('.funrow')].map(d => ({ funcao: d.querySelector('.fF').value, outra: d.querySelector('.fO').value, valor: d.querySelector('.fV').value })).filter(x => x.funcao);
-      const r = await apiPost({ acao: 'cad_enviar', cd: CADR, dados: { funcoes, completo: val('fNome'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
-        nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), endereco: val('fEnd'), nrs } });
-      app.innerHTML = `<header>${logoHtml()}<div><h1>Cadastro</h1><div class="sub">${esc(D.nome)}</div></div></header>
-        <div class="card" style="border-color:var(--accent);text-align:center;padding:28px 18px"><div style="font-size:44px">✅</div><h2 style="margin:8px 0">Cadastro enviado!</h2><div class="muted">${esc(r.msg)}</div></div>`;
+      const msg = await cfg.enviar({ funcoes, completo: val('fNome'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
+        nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), endereco: val('fEnd'), nrs });
+      app.innerHTML = `<header>${logoHtml()}<div><h1>${esc(cfg.titulo)}</h1><div class="sub">${esc(cfg.sub)}</div></div></header>
+        <div class="card" style="border-color:var(--accent);text-align:center;padding:28px 18px"><div style="font-size:44px">✅</div><h2 style="margin:8px 0">${esc(cfg.ok)}</h2><div class="muted">${esc(msg)}</div>
+        ${cfg.voltar ? '<button class="btn pri" id="fVoltar2" style="margin-top:16px">← Voltar</button>' : ''}</div>`;
+      if (cfg.voltar) document.getElementById('fVoltar2').onclick = cfg.voltar;
       window.scrollTo(0, 0);
     } catch (err) { b.disabled = false; m.innerHTML = `<div class="msg-err">⚠ ${esc(err.message || err)}</div>`; }
   };
+  window.scrollTo(0, 0);
+}
+async function initCadastro() {
+  document.title = 'Cadastro do técnico';
+  const app = document.getElementById('app');
+  let D;
+  try { D = await apiGet({ f: 'cad', cd: CADR }); }
+  catch (err) { app.innerHTML = `<div class="empty">⚠ ${esc(err.message || err)}</div>`; document.getElementById('load').style.display = 'none'; return; }
+  document.getElementById('load').style.display = 'none';
+  cadForm(app, D, { titulo: 'Cadastro', sub: D.nome + ' · dados para cadastro e pagamentos', botao: '📨 Enviar cadastro', ok: 'Cadastro enviado!',
+    texto: 'Por favor, preencha seus dados. Eles ficam só com a administração e são usados para o seu cadastro e para os pagamentos.',
+    aviso: D.preenchido ? `<div class="card" style="border-color:var(--accent)"><b>✅ Você já enviou o cadastro em ${esc(D.preenchido)}.</b><div class="muted" style="font-size:13px">Se precisar corrigir, preencha de novo e envie: os dados novos substituem os anteriores.</div></div>` : '',
+    enviar: async dados => (await apiPost({ acao: 'cad_enviar', cd: CADR, dados })).msg });
+}
+/* técnico: "Meus dados" pela agenda (mesmo link de sempre) */
+async function abrirMeusDados() {
+  const app = document.getElementById('app'), antes = window.scrollY;
+  app.innerHTML = '<div class="card" style="margin-top:20px"><div class="spin" style="margin:18px auto"></div></div>';
+  let D;
+  try { D = await apiGet({ f: 'meucad', t: TOKEN }); } catch (e) { avisar('⚠ ' + (e.message || e)); location.reload(); return; }
+  cadForm(app, D, { titulo: 'Meus dados', sub: D.nome + ' · cadastro e pagamentos', botao: '💾 Salvar meus dados', ok: 'Dados atualizados!',
+    texto: D.id ? 'Confira e corrija o que precisar. Os dados ficam só com a administração.' : 'Ainda não temos o seu cadastro: preencha para receber os pagamentos. Os dados ficam só com a administração.',
+    voltar: () => location.reload(), enviar: async dados => (await apiPost({ acao: 'cad_meus', t: TOKEN, dados })).msg });
+}
+/* ADM: editar o cadastro de qualquer técnico */
+async function admCadEditar(i) {
+  const c = window.ACAD[i], app = document.getElementById('app');
+  app.innerHTML = '<div class="card" style="margin-top:20px"><div class="spin" style="margin:18px auto"></div></div>';
+  let D;
+  try { D = await apiGet({ f: 'meucad', a: ADM, id: c.id }); } catch (e) { avisar('⚠ ' + (e.message || e)); admDraw(); return; }
+  const voltar = async () => { await admCarregar(); admDraw(); };
+  cadForm(app, D, { titulo: 'Editar cadastro', sub: c.nome + (c.status ? ' · ' + c.status.toLowerCase() : ''), botao: '💾 Salvar cadastro', ok: 'Cadastro salvo!', parcial: true,
+    texto: 'Edição pela administração: pode salvar mesmo com campos em branco (o cadastro só fica “preenchido” quando tiver tudo). Funções que você tirar daqui saem de “Funções e cachês” (ficam na Lixeira).',
+    voltar, enviar: async dados => (await admPost({ acao: 'adm_cad_editar', id: c.id, dados })).msg });
 }
 
 /* ----- login com e-mail e senha (endereço do app sem nada depois) ----- */
@@ -2108,7 +2147,7 @@ async function cgAlertar() {
 function cgDraw() {
   const D = CG.d, app = document.getElementById('app'), f = norm(CG.q);
   const pode = x => !D.perms || D.perms.includes(x);
-  const abas = [D.alerta && ['alr', '📣 Alerta'], pode('escala') && ['ev', '📋 Escala'], (pode('escala') || pode('agenda')) && ['eq', '👤 Equipe'], pode('agenda') && ['ag', '📅 Agenda da equipe'], pode('pendencias') && ['pe', '⚠ Pendências' + ((D.pendencias || []).length ? ` (${D.pendencias.length})` : '')], D.cadastros && ['cad', '👤 Cadastrar técnico']].filter(Boolean);
+  const abas = [D.alerta && ['alr', '📣 Alerta'], D.qrEventos && ['qr', '▣ QR Code'], pode('escala') && ['ev', '📋 Escala'], (pode('escala') || pode('agenda')) && ['eq', '👤 Equipe'], pode('agenda') && ['ag', '📅 Agenda da equipe'], pode('pendencias') && ['pe', '⚠ Pendências' + ((D.pendencias || []).length ? ` (${D.pendencias.length})` : '')], D.cadastros && ['cad', '👤 Cadastrar técnico']].filter(Boolean);
   if (abas.length && (!CG.abaUser || !abas.some(a => a[0] === CG.aba))) CG.aba = (D.alerta && D.alerta.eventos && D.alerta.eventos.length) ? 'alr' : (abas.find(a => a[0] !== 'alr') || abas[0])[0];
   window.CGE = D.eventos; window.CGP = D.equipe;
   const evs = D.eventos.filter(e => !f || norm([e.nome, e.os, e.local, e.equipe.map(p => p.nome).join(' ')].join(' ')).includes(f));
@@ -2123,10 +2162,17 @@ function cgDraw() {
   const pessoas = D.equipe.filter(p => !f || norm(p.nome).includes(f));
   app.innerHTML = `<header>${logoHtml()}<div><h1>Coordenação</h1><div class="sub">${esc(D.nome)} · escala e links</div></div></header>
     ${faixaTema()}
-    ${D.qr ? `<a class="btn pri big" style="width:100%;justify-content:center;text-decoration:none;color:#fff;margin-bottom:12px;box-sizing:border-box" href="${esc(D.qr)}">▣ QR Code e conferência dos horários</a>` : (pode('qr') ? '<div class="card muted" style="font-size:13px">▣ O QR Code aparece aqui quando você for responsável pelos horários de algum evento.</div>' : '')}
+    ${D.qr ? `<a class="btn pri big" style="width:100%;justify-content:center;text-decoration:none;color:#fff;margin-bottom:12px;box-sizing:border-box" href="${esc(D.qr)}">▣ QR Code e conferência dos horários</a>` : (pode('qr') && !D.qrEventos ? '<div class="card muted" style="font-size:13px">▣ O QR Code aparece aqui quando você for responsável pelos horários de algum evento.</div>' : '')}
     <div class="tabs" style="flex-wrap:wrap">${abas.map(([k, l]) => `<button class="btn ${CG.aba === k ? 'on' : ''}" onclick="CG.aba='${k}';CG.abaUser=1;cgDraw()">${l}</button>`).join('')}</div>
     ${CG.aba === 'ev' || CG.aba === 'eq' ? `<div class="card"><input id="cgQ" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:15px" placeholder="${CG.aba === 'ev' ? 'Buscar evento, OS, local ou técnico…' : 'Buscar técnico…'}" value="${esc(CG.q)}"></div>` : ''}
     ${CG.aba === 'ag' ? ((D.agenda || []).map(d => `<div class="card"><b>${esc(d.diaFmt)}</b> <span class="muted" style="font-size:12px">${esc(diaSem(d.dia))}</span>${d.eventos.map(e => `<div class="prow" style="flex-wrap:wrap"><div style="flex-basis:100%"><b style="font-size:14px">${esc(e.evento)}</b><div class="muted" style="font-size:12px">${esc([e.os, e.local, e.fase].filter(Boolean).join(' · '))}</div><div style="font-size:13px;margin-top:4px">${e.pessoas.map(esc).join(' · ')}</div></div></div>`).join('')}</div>`).join('') || '<div class="card muted">Ninguém escalado nos próximos 30 dias.</div>')
+    : CG.aba === 'qr' ? `<div class="card"><h3 style="margin:0 0 4px;font-size:15px">▣ QR Code do evento</h3>
+      <div class="muted" style="font-size:12px">Escolha o evento e mostre o QR Code para a equipe fazer check-in e check-out. O código muda a cada 30 segundos e só vale para o evento escolhido: quem não está escalado nele recebe erro na leitura.</div></div>
+      ${(D.qrEventos || []).length ? D.qrEventos.map((e, i) => `<div class="card" style="${e.hoje ? 'border-color:var(--accent)' : ''}"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:180px">
+        ${e.hoje ? '<span style="font-size:11px;font-weight:700;color:var(--accent)">HOJE</span><br>' : ''}<b>${esc(e.nome)}</b> <span class="muted" style="font-size:12px">${esc(e.os || '')}</span>
+        <div class="muted" style="font-size:12px">${esc(e.start)}${e.end !== e.start ? ' a ' + esc(e.end) : ''}${e.local ? ' · ' + esc(e.local) : ''} · ${e.equipe} na escala</div></div>
+        <button class="btn pri" onclick="mostrarQR({ ev: CG.d.qrEventos[${i}].key, k: COORDG })">▣ Mostrar QR Code</button></div></div>`).join('')
+        : '<div class="card muted">Nenhum evento de ontem até os próximos 7 dias.</div>'}`
     : CG.aba === 'alr' ? cgAlertaHtml()
     : CG.aba === 'cad' ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">👤 Cadastrar técnico novo</h3>
       <div class="muted" style="font-size:12px">Coloque o nome e o celular e mande o link pelo WhatsApp. O técnico preenche função e valor combinado, documentos, PIX e contato de emergência. A administração recebe um aviso.</div>
