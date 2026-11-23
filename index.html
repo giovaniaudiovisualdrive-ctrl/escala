@@ -118,6 +118,10 @@ body{background:var(--bg)}
 .qrbar{height:6px;border-radius:6px;background:var(--panel2);overflow:hidden;margin:6px 0}.qrbar i{display:block;height:100%;width:100%;background:var(--accent);transition:width 1s linear}
 .nb{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--amber);color:#111;font-size:12px;font-weight:800;text-align:center;margin-left:4px}
 .qrok{margin-bottom:14px;padding:10px 12px;border-radius:10px;background:rgba(31,191,117,.15);color:var(--ok);font-weight:600;font-size:13px}
+#filaBar{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:15;display:flex;flex-direction:column;gap:8px}
+#filaBar .fila-it{background:var(--panel);border:1px solid var(--amber);border-left:5px solid var(--amber);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#filaBar .fila-it.err{border-color:var(--red);border-left-color:var(--red)}
+#filaBar .fila-it .btn{align-self:flex-start;margin-top:4px;padding:6px 12px;font-size:12px}
 /* ---------- tema claro / automático (Configurações → Aparência) ---------- */
 :root[data-modo="claro"]{--bg:#f3f6f9;--panel:#ffffff;--panel2:#eef2f6;--line:#dbe2ea;--text:#17212c;--muted:#5a6879;--dim:#8a96a4;--amber:#b26e00;--ok:#18834a;--red:#c3352b;color-scheme:light}
 @media (prefers-color-scheme: light){:root[data-modo="auto"]{--bg:#f3f6f9;--panel:#ffffff;--panel2:#eef2f6;--line:#dbe2ea;--text:#17212c;--muted:#5a6879;--dim:#8a96a4;--amber:#b26e00;--ok:#18834a;--red:#c3352b;color-scheme:light}}
@@ -274,17 +278,65 @@ function mv(n) { const [y, m] = S.month.split('-').map(Number); const d = new Da
 /* ==================== PONTO (check-in / check-out) ==================== */
 const EV = new URLSearchParams(location.search).get('e') || '';
 const ALIM = ['Local forneceu', 'Pago pelo coordenador', 'Pago por mim', 'Não teve'];
+const semRedeErr = () => { const e = new Error('Sem internet agora. Confira o sinal e tente de novo.'); e.semRede = true; return e; };
+async function pedirJson(url, op) {
+  let r; try { r = await fetch(url, op); } catch (e) { throw semRedeErr(); }   // sem sinal / caiu no meio
+  let d; try { d = await r.json(); } catch (e) { throw semRedeErr(); }      // o Google devolveu página de erro (sobrecarga)
+  if (d.erro) throw new Error(d.erro); return d;
+}
 async function apiGet(params) {
   params = Object.assign({}, params);
   if (params.c) { params.rc = params.c; delete params.c; }   // o Apps Script não aceita um parâmetro chamado "c" na URL
   if (params.k) { params.cg = params.k; delete params.k; }
-  const r = await fetch(API + '?' + new URLSearchParams(Object.assign(params, { _: Date.now() })), { credentials: 'omit', cache: 'no-store' });
-  const d = await r.json(); if (d.erro) throw new Error(d.erro); return d;
+  return pedirJson(API + '?' + new URLSearchParams(Object.assign(params, { _: Date.now() })), { credentials: 'omit', cache: 'no-store' });
 }
 async function apiPost(body) {
-  const r = await fetch(API, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
-  const d = await r.json(); if (d.erro) throw new Error(d.erro); return d;
+  return pedirJson(API, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
 }
+/* ---------- registros feitos SEM SINAL: ficam guardados no celular e vão sozinhos quando a internet voltar ---------- */
+const novoFid = () => Date.now().toString(36) + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => (b % 36).toString(36)).join('');
+const filaLer = k => { try { return JSON.parse(lsGet(k || 'bt_fila') || '[]'); } catch (e) { return []; } };
+const filaSalvar = (f, k) => lsSet(k || 'bt_fila', f.length ? JSON.stringify(f) : null);
+function filaAdd(item) { const f = filaLer(); f.push(Object.assign({ quando: Date.now() }, item)); filaSalvar(f); filaBarra(); }
+let FILA_ENVIANDO = false;
+async function filaEnviar(manual) {
+  if (FILA_ENVIANDO) return; let f = filaLer(); if (!f.length) return filaBarra();
+  FILA_ENVIANDO = true; filaBarra(true); let enviou = 0;
+  try {
+    while (f.length) {
+      const it = f[0];
+      try { await apiPost(it.body); enviou++; }
+      catch (e) {
+        if (e.semRede) break;   // ainda sem sinal: tenta depois, na mesma ordem
+        const er = filaLer('bt_fila_erro'); er.push({ rotulo: it.rotulo, erro: e.message || String(e), quando: it.quando }); filaSalvar(er, 'bt_fila_erro');
+      }
+      f = filaLer(); f.shift(); filaSalvar(f); f = filaLer();
+    }
+  } finally { FILA_ENVIANDO = false; }
+  filaBarra();
+  if (enviou) {
+    avisar('✅ ' + (enviou === 1 ? 'O registro guardado sem sinal foi enviado.' : enviou + ' registros guardados sem sinal foram enviados.'));
+    if (!EV && TOKEN && typeof loadPonto === 'function') loadPonto(); if (window.RECARREGAR_EV) window.RECARREGAR_EV();
+  } else if (manual && filaLer().length) avisar('📶 Ainda sem internet. Os registros continuam guardados.');
+}
+function filaBarra(enviando) {
+  let b = document.getElementById('filaBar');
+  const f = filaLer(), er = filaLer('bt_fila_erro');
+  if (!f.length && !er.length) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('div'); b.id = 'filaBar'; document.body.appendChild(b); }
+  const hm = t => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  b.innerHTML = (f.length ? `<div class="fila-it"><b>📶 ${f.length === 1 ? '1 registro guardado' : f.length + ' registros guardados'} sem sinal</b>
+      <span>${f.map(x => esc(x.rotulo) + ' (' + hm(x.quando) + ')').join(' · ')}</span>
+      <span class="muted">${enviando ? 'Enviando…' : 'Vai sozinho quando a internet voltar. Não precisa registrar de novo.'}</span>
+      ${enviando ? '' : '<button class="btn" onclick="filaEnviar(true)">Enviar agora</button>'}</div>` : '') +
+    er.map((x, i) => `<div class="fila-it err"><b>⚠ Não aceito: ${esc(x.rotulo)} (${hm(x.quando)})</b><span>${esc(x.erro)}</span><span class="muted">Fale com a coordenação para lançar.</span>
+      <button class="btn" onclick="filaTirarErro(${i})">Entendi</button></div>`).join('');
+}
+function filaTirarErro(i) { const e = filaLer('bt_fila_erro'); e.splice(i, 1); filaSalvar(e, 'bt_fila_erro'); filaBarra(); }
+window.addEventListener('online', () => setTimeout(filaEnviar, 1500));
+setInterval(() => { if (filaLer().length && !document.hidden) filaEnviar(); }, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && filaLer().length) filaEnviar(); });
+setTimeout(() => { filaBarra(); if (filaLer().length) filaEnviar(); }, 2500);
 const nowLocal = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
 const fmtH = h => { const m = Math.round((+h || 0) * 60); return Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
 const calcHtml = c => c ? `<div class="calc"><div><b>${fmtH(c.horas)}</b>trabalhadas</div><div><b>${c.diarias}</b>diária${c.diarias > 1 ? 's' : ''}</div><div><b>${fmtH(c.extra)}</b>hora extra</div></div>` : '';
@@ -410,10 +462,15 @@ async function validarQR(q, ctx, titulo) {
   if (!q) return null;
   const el = document.getElementById('pm');
   el.innerHTML = '<div class="box"><h3>Conferindo o QR Code…</h3><div class="spin" style="margin:18px auto"></div></div>'; el.style.display = 'grid';
+  const lidoEm = Date.now();
   try {
     const r = await apiGet(Object.assign({ f: 'qrcheck', qr: q.qr }, q.e ? { e: q.e } : EV ? { e: EV } : ctx && ctx.ev ? { ev: ctx.ev } : { t: TOKEN }));
+    r.qrCod = q.qr; r.qrEm = lidoEm;
     closeP(); return r;
   } catch (e) {
+    if (e.semRede && (ctx && ctx.ev || EV)) {   // sem sinal: guarda o código e a hora da leitura; o servidor confere quando a internet voltar
+      closeP(); return { offline: true, qrCod: q.qr, qrEm: lidoEm, passe: '', evento: { key: ctx && ctx.ev || '', nome: '' } };
+    }
     el.innerHTML = `<div class="box"><h3>QR Code não aceito</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts"><button class="btn" id="qF">Fechar</button><button class="btn pri" id="qT">Escanear de novo</button></div></div>`;
     return new Promise(res => {
       document.getElementById('qF').onclick = () => { closeP(); res(null); };
@@ -426,6 +483,8 @@ async function iniciarPonto(o) {
   if (o.qr) {
     const r = await validarQR(o.qrLido || null, { ev: o.evento }, (o.acao === 'checkin' ? 'Check-in' : 'Check-out') + (o.sub ? ' · ' + o.sub : ''));
     if (!r) return;
+    o.qrCod = r.qrCod; o.qrEm = r.qrEm;
+    if (r.offline) { o.passe = ''; o.semSinalQR = true; abrirPonto(o); return; }
     if (!EV && o.evento && r.evento.key !== o.evento) {
       if (o.acao === 'checkout') { alert('Este QR Code é de outro evento (' + r.evento.nome + '). Escaneie o QR do evento ' + o.sub + '.'); return; }
       o.role = '';
@@ -689,6 +748,7 @@ function abrirPonto(o) {
   const horaIni = passado ? diaSel + 'T08:00' : (o.acao === 'checkout' && o.dia && o.dia < hojeL ? o.dia + nowLocal().slice(10) : nowLocal());
   el.innerHTML = `<div class="box"><h3>${o.motorista ? '🚐 Check-in motorista' : o.acao === 'checkin' ? '✅ Check-in (entrada)' : '🏁 Check-out (saída)'}</h3><div class="muted" style="font-size:13px">${esc(o.sub || '')}</div>
     ${o.passe && !o.coord ? '<div class="qrok" style="margin:12px 0 0">▣ QR Code conferido</div>' : ''}
+    ${o.semSinalQR ? '<div class="qrok" style="margin:12px 0 0;background:rgba(245,184,61,.15);color:var(--amber)">📶 Sem sinal: o QR Code e a hora da leitura ficam guardados e são conferidos quando a internet voltar.</div>' : ''}
     ${dias.length > 1 || (dias.length && !dias.some(x => x.dia === hojeL)) ? `<label>Dia de trabalho<select id="pDia">${dias.map(x => `<option value="${esc(x.dia)}" ${x.dia === diaSel ? 'selected' : ''}>${esc(x.txt)}${x.dia === hojeL ? ' (hoje)' : ''}</option>`).join('')}${dias.some(x => x.dia === hojeL) ? '' : `<option value="" ${diaSel === '' ? 'selected' : ''}>Hoje (${diaBr(hojeL)})</option>`}</select></label>` : ''}
     ${o.dia ? `<div class="qrok" style="margin:12px 0 0;${o.dia < hojeL ? 'background:rgba(245,184,61,.15);color:var(--amber)' : ''}">📅 Dia ${diaBr(o.dia)}${o.dia === hojeL ? ' (hoje)' : ''}</div>` : ''}
     ${passado ? '<div class="muted" style="font-size:12px;margin-top:6px">Dia que já passou: coloque a entrada e, se já terminou, a saída desse dia. Cada dia tem o seu registro.</div>' : ''}
@@ -708,7 +768,12 @@ function abrirPonto(o) {
     <div class="acts" id="pActs"><button class="btn" onclick="closeP()">Cancelar</button><button class="btn pri" id="pGo">Confirmar</button></div></div>`;
   el.style.display = 'grid';
   const sd = document.getElementById('pDia');
-  if (sd) sd.onchange = () => abrirPonto(Object.assign({}, o, { diaEsc: sd.value }));
+  if (sd) sd.onchange = () => {   // troca o dia sem perder o que já foi digitado
+    const ids = ['pNome', 'pRole', 'pObs', 'pAlm', 'pJan'], vals = {};
+    ids.forEach(i => { const x = document.getElementById(i); if (x) vals[i] = x.value; });
+    abrirPonto(Object.assign({}, o, { diaEsc: sd.value }));
+    ids.forEach(i => { const x = document.getElementById(i); if (x && vals[i] != null) x.value = vals[i]; });
+  };
   const ab = document.getElementById('pAb');
   if (ab) ab.onchange = () => { document.getElementById('pNomeL').style.display = ab.value === '__outro' ? '' : 'none'; };
   document.getElementById('pGo').onclick = async () => {
@@ -736,10 +801,18 @@ function abrirPonto(o) {
     body.loc = L.loc || null;
     if (!body.loc && o.exigir) { msg.innerHTML = `<div class="msg-err">${esc(L.erro)}</div>`; go.disabled = false; go.textContent = 'Tentar de novo'; return; }
     go.textContent = 'Enviando…';
+    if (o.qrCod) { body.qr = o.qrCod; body.qrEm = o.qrEm; }   // se o passe vencer até a internet voltar, o servidor confere o código pela hora da leitura
+    if (!body.hora) body.hora = nowLocal();   // a hora é a do toque, mesmo que o envio atrase
+    body.fid = novoFid();
+    const rotulo = (o.acao === 'checkin' ? 'Check-in' : 'Check-out') + ' · ' + (o.sub || '') + (body.nome ? ' · ' + body.nome : '');
+    let fase = 1;
     try {
+      // o que ficou guardado sem sinal vai antes (a ordem importa: check-in antes do check-out)
+      if (filaLer().length) { await filaEnviar(); if (filaLer().length) throw semRedeErr(); }
       let r = await apiPost(body);
+      fase = 2;
       if (saida && r.id) {   // dia que já passou com entrada e saída: fecha o mesmo registro
-        const b2 = Object.assign({}, body, { acao: 'checkout', id: r.id, hora: saida });
+        const b2 = Object.assign({}, body, { acao: 'checkout', id: r.id, hora: saida, fid: novoFid() });
         const r2 = await apiPost(b2);
         r = Object.assign({}, r2, { msg: 'Dia ' + diaBr(body.dia) + ' registrado: ' + r2.in + ' → ' + r2.out + '.' + (r2.pend ? ' ⏳ Vai para o responsável confirmar.' : '') });
         o.acao = 'checkout';
@@ -756,6 +829,15 @@ function abrirPonto(o) {
       document.getElementById('pActs').innerHTML = '<button class="btn pri" onclick="closeP()">OK</button>';
       if (o.depois) o.depois();
     } catch (e) {
+      if (e.semRede) {   // sem sinal: guarda no celular com a hora do toque e envia sozinho depois
+        const sem = Object.assign({}, body, { semSinal: true });
+        if (fase === 1) filaAdd({ body: sem, rotulo, evento: o.evento || '', acao: o.acao, dia: body.dia || (body.hora || '').slice(0, 10), hora: body.hora });
+        if (saida) filaAdd({ body: Object.assign({}, sem, { acao: 'checkout', id: '', hora: saida, fid: novoFid() }), rotulo: 'Check-out · ' + (o.sub || ''), evento: o.evento || '', acao: 'checkout', dia: body.dia, hora: saida });
+        msg.innerHTML = `<div class="msg-ok" style="background:rgba(245,184,61,.15);color:var(--amber);border-color:var(--amber)">📶 Sem sinal agora. O ${o.acao === 'checkin' && !saida ? 'check-in' : 'registro'} das ${esc((body.hora || '').slice(11, 16))} ficou <b>guardado no celular</b> e vai ser enviado sozinho quando a internet voltar. Não precisa fazer de novo.</div>`;
+        document.getElementById('pActs').innerHTML = '<button class="btn pri" onclick="closeP()">OK</button>';
+        if (o.depois) o.depois();
+        return;
+      }
       const dica = body.loc && body.loc.acc > 300 && /m do local/.test(e.message || '') ? (IOS ? ' Sua localização veio imprecisa (±' + body.loc.acc + ' m): ligue "Localização Precisa" em Ajustes → Privacidade e Segurança → Serviços de Localização → Sites do Safari.' : ' Sua localização veio imprecisa (±' + body.loc.acc + ' m): ligue o GPS em alta precisão.') : '';
       msg.innerHTML = `<div class="msg-err">⚠ ${esc((e.message || e) + dica)}</div>`; go.disabled = false; go.textContent = 'Tentar de novo';
     }
@@ -799,6 +881,10 @@ function pontoCardHtml() {
   if (!p) return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3><div class="muted" style="font-size:13px">Carregando…</div></div>`;
   if (p.erro) return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3><div class="muted" style="font-size:13px">⚠ ${esc(p.erro)}</div></div>`;
   const hojeP = p.hoje || nowLocal().slice(0, 10);
+  // check-ins guardados sem sinal (sem check-out guardado depois) aparecem como abertos
+  const filaP = filaLer().filter(x => x.evento && x.body && x.body.t === TOKEN);
+  filaP.forEach((x, i) => { if (x.acao === 'checkin' && !filaP.slice(i + 1).some(y => y.acao === 'checkout' && y.evento === x.evento) && !p.abertos.some(a => a.key === x.evento && a.dia === x.dia))
+    p.abertos = p.abertos.concat([{ id: '', key: x.evento, evento: (x.rotulo || '').replace(/^Check-in · /, '').split(' · ')[0], dia: x.dia, in: (x.hora || '').slice(11, 16) + ' (guardado sem sinal)', qr: false, exigir: false }]); });
   const abertoKeys = p.abertos.filter(a => !a.dia || a.dia === hojeP).map(a => a.key);   // só o aberto de hoje esconde o check-in de hoje
   const rows = [];
   window.PA = [];
@@ -821,13 +907,19 @@ function pontoCardHtml() {
     <button class="btn" onclick="abrirConferir({ t: TOKEN, ev: window.PQ[${i}].key, depois: loadPonto })">⏱ Conferir${c.pendentes ? ` <span class="nb">${c.pendentes}</span>` : ''}</button>
     ${c.alertas && c.alertas.length ? `<div style="flex-basis:100%">${alertasHtml(c.alertas)}</div>` : ''}</div>`).join('');
   const scanOutro = !p.abertos.length ? `<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="${act({ acao: 'checkin', qr: true, evento: '', sub: '', role: '', exigir: false, depois: loadPonto })}">📷 Check-in com QR Code (outro evento)</button>` : '';
-  return `<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${corr}${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
+  return `${p.semSinal ? '<div class="msg-ok" style="background:rgba(245,184,61,.15);color:var(--amber);border-color:var(--amber);margin-bottom:10px">📶 Sem sinal: mostrando o ponto guardado no celular. O que você registrar fica guardado e vai quando a internet voltar.</div>' : ''}<div class="card ponto"><h3>⏱ Ponto de hoje</h3>${corr}${coord}${rows.join('') || '<div class="muted" style="font-size:13px">Nenhum evento seu hoje.</div>'}${scanOutro}
     ${rec ? `<div class="muted" style="font-size:11px;margin-top:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Últimos registros</div>${rec}` : ''}
     ${p.abertos.length || p.recentes.length ? '<button class="btn" style="width:100%;justify-content:center;margin-top:10px" onclick="abrirRelatorio({ t: TOKEN })">📄 Relatório de horas por evento</button>' : ''}
     <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirContestacao({ t: TOKEN })">💰 Contestação de diárias</button></div>`;
 }
 async function loadPonto() {
-  try { S.ponto = await apiGet({ f: 'ponto', t: TOKEN }); } catch (e) { S.ponto = { erro: e.message || String(e) }; }
+  try { S.ponto = await apiGet({ f: 'ponto', t: TOKEN }); lsSet('pt_' + TOKEN, JSON.stringify(S.ponto)); }
+  catch (e) {
+    let c = null; try { c = JSON.parse(lsGet('pt_' + TOKEN) || 'null'); } catch (x) {}
+    // sem sinal: usa o último ponto guardado, se for de hoje (dá para registrar e o envio fica na fila)
+    if (e.semRede && c && c.hoje === nowLocal().slice(0, 10)) { S.ponto = c; S.ponto.semSinal = true; }
+    else S.ponto = { erro: e.message || String(e) };
+  }
   const el = document.getElementById('ponto'); if (el) el.innerHTML = pontoCardHtml();
   if (S.ponto && S.ponto.coordena) alerta12h([].concat(...S.ponto.coordena.map(c => c.alertas || [])), 'ag');
 }
@@ -838,9 +930,13 @@ let PASSE_EV = null;   // QR conferido neste celular (vale 15 min)
 async function initEvento() {
   const app = document.getElementById('app');
   let d;
-  try { d = await apiGet({ f: 'ponto', e: EV }); }
-  catch (e) { app.innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; document.getElementById('load').style.display = 'none'; return; }
-  const recarregar = async () => { try { d = await apiGet({ f: 'ponto', e: EV }); } catch (e) { /* mantém */ } draw(); };
+  try { d = await apiGet({ f: 'ponto', e: EV }); lsSet('ev_' + EV, JSON.stringify(d)); }
+  catch (e) {
+    try { d = e.semRede ? JSON.parse(lsGet('ev_' + EV) || 'null') : null; } catch (x) { d = null; }
+    if (d) d.semSinal = true;   // sem sinal: abre com os dados guardados; o registro fica na fila
+    else { app.innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; document.getElementById('load').style.display = 'none'; return; }
+  }
+  const recarregar = async () => { try { d = await apiGet({ f: 'ponto', e: EV }); lsSet('ev_' + EV, JSON.stringify(d)); } catch (e) { /* mantém */ } draw(); };
   window.RECARREGAR_EV = recarregar;
   const ev = d.evento; document.title = 'Check-in · ' + ev.nome;
   // aberto pela câmera do celular (link do QR com &qr=): confere na hora e guarda o passe
@@ -848,15 +944,16 @@ async function initEvento() {
     try { history.replaceState(null, '', location.pathname + '?e=' + encodeURIComponent(EV)); } catch (e) {}
     document.getElementById('load').style.display = 'none';
     const r = await validarQR({ qr: QR_URL, e: EV }, null, 'QR Code');
-    if (r) PASSE_EV = { passe: r.passe, ate: Date.now() + (r.minutos || 15) * 60000 };
+    if (r) PASSE_EV = { passe: r.passe, ate: Date.now() + (r.minutos || 15) * 60000, qr: r.qrCod || QR_URL, qrEm: r.qrEm || Date.now() };
   }
   const passeOk = () => PASSE_EV && PASSE_EV.ate > Date.now() + 20000 ? PASSE_EV.passe : '';
   const ponto = async acao => {
-    const o = { acao, sub: ev.nome, pedirNome: true, exigir: !!d.exigir, qr: !!d.qr, dias: d.dias || [], depois: recarregar };
+    const o = { acao, sub: ev.nome, evento: ev.key, pedirNome: true, exigir: !!d.exigir, qr: !!d.qr, dias: d.dias || [], depois: recarregar };
+    if (PASSE_EV && PASSE_EV.qr) { o.qrCod = PASSE_EV.qr; o.qrEm = PASSE_EV.qrEm; }
     if (acao === 'checkout') { o.id = lsGet('ponto_open_' + EV) || ''; o.abertos = d.abertos || []; }
     if (d.qr && passeOk()) { o.passe = passeOk(); o.qr = false; }
     await iniciarPonto(o);
-    if (o.passe && (!PASSE_EV || PASSE_EV.passe !== o.passe)) PASSE_EV = { passe: o.passe, ate: Date.now() + 14 * 60000 };
+    if (o.passe && (!PASSE_EV || PASSE_EV.passe !== o.passe)) PASSE_EV = { passe: o.passe, ate: Date.now() + 14 * 60000, qr: o.qrCod, qrEm: o.qrEm };
   };
   const per = ev.start + (ev.end && ev.end !== ev.start ? ' a ' + ev.end : '');
   const draw = () => {
@@ -891,7 +988,12 @@ function copiar(t) {
 }
 function avisar(m) { document.querySelectorAll('.msg-ok.av').forEach(x => x.remove()); const t = document.createElement('div'); t.className = 'msg-ok av'; t.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:40'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 2500); }
 const mapa = s => { const m = String(s || '').match(/(-?\d+\.\d+),(-?\d+\.\d+)/); return m ? `<a href="https://www.google.com/maps?q=${m[1]},${m[2]}" target="_blank" style="text-decoration:none" title="${esc(s)}">📍</a>` : ''; };
-async function admCarregar() { AD.d = await apiGet({ f: 'adm', a: ADM }); }
+async function admCarregar() { AD.d = await apiGet(Object.assign({ f: 'adm', a: ADM }, AD.todos ? { dias: '0' } : {})); }
+async function admTodos() {
+  const b = document.getElementById('admTodosB'); if (b) { b.disabled = true; b.textContent = 'Carregando…'; }
+  AD.todos = true;
+  try { await admCarregar(); admDraw(); } catch (e) { AD.todos = false; alert(e.message || e); if (b) { b.disabled = false; b.textContent = 'Carregar todos'; } }
+}
 async function admPost(body) { return apiPost(Object.assign({ a: ADM }, body)); }
 function admRegs() {
   const f = norm(AD.q);
@@ -1115,6 +1217,7 @@ function admDraw() {
             <span style="display:block;font-size:12px;color:var(--amber)">${f.falta === 'saida' ? 'Falta a saída (entrada ' + esc(f.in) + ')' : 'Falta entrada e saída'}</span></div>
             <button class="btn" onclick="admFalta(${i})">${f.falta === 'saida' ? '✎ Pôr saída' : '➕ Lançar'}</button></div>`).join('')}</div>`;
       })()}
+      ${D.regsOcultos ? `<div class="muted" style="font-size:12px;margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">🗂 Mostrando os registros dos últimos ${D.regsDias} dias (mais os sem saída e os aguardando conferência). ${D.regsOcultos} mais antigo(s) não carregado(s), para o app abrir rápido. <button class="btn" id="admTodosB" style="padding:5px 10px;font-size:12px" onclick="admTodos()">Carregar todos</button></div>` : ''}
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Totais ${AD.ev ? 'do evento' : ''} · ${regs.length} registro(s)</h3>
         ${Object.values(tot).sort((a, b) => a.n.localeCompare(b.n)).map(t => `<div class="prow"><div class="g"><b>${esc(t.n)}</b>${t.ab ? `<span style="color:var(--amber);font-size:12px">${t.ab} em aberto</span>` : ''}${t.cf ? `<span style="color:var(--amber);font-size:12px">${t.cf} aguardando conferência</span>` : ''}</div><div style="text-align:right;font-size:12px"><b>${t.d} diária${t.d !== 1 ? 's' : ''}</b><span class="muted">${fmtH(t.h)} · HE ${fmtH(t.e)}</span></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Registros</h3>
