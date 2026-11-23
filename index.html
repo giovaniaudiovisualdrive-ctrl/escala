@@ -431,7 +431,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && fi
 setTimeout(() => { filaBarra(); if (filaLer().length) filaEnviar(); }, 2500);
 const nowLocal = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
 const fmtH = h => { const m = Math.round((+h || 0) * 60); return Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
-const calcHtml = c => c ? `<div class="calc"><div><b>${fmtH(c.horas)}</b>trabalhadas</div><div><b>${c.diarias}</b>diária${c.diarias > 1 ? 's' : ''}</div><div><b>${fmtH(c.extra)}</b>hora extra</div></div>` : '';
+const calcHtml = c => c ? `<div class="calc"><div><b>${fmtH(c.horas)}</b>trabalhadas</div><div><b>${c.diarias}</b>diária${c.diarias > 1 ? 's' : ''}</div><div><b>${fmtH(c.extra)}</b>horas adicionais</div></div>` : '';
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
 function closeP() { document.getElementById('pm').style.display = 'none'; }
@@ -646,12 +646,12 @@ async function mostrarQR(ctx) {
 /* ----- conferência do horário: responsável confirma ou pede correção ----- */
 const avisarHtml = l => (l && l.length) ? `<div class="muted" style="font-size:12px;margin-top:10px">Avise o responsável para ele confirmar:</div>` +
   l.map(x => `<a class="btn pri" style="text-decoration:none;width:100%;justify-content:center;margin-top:6px" href="${esc(x.wa)}" target="_blank" rel="noopener">📲 Avisar ${esc(x.nome)} no WhatsApp</a>`).join('') : '';
-/** Aviso de 12 h: falta 1 h para completar a diária (ou a hora extra já está correndo). */
+/** Aviso de 12 h: falta 1 h para completar a diária (ou as horas adicionais já estão correndo). */
 const alertasHtml = l => !(l && l.length) ? '' : `<div style="margin-top:12px;border:1px solid var(--amber);background:rgba(245,184,61,.12);border-radius:12px;padding:10px 12px">
   <b style="color:var(--amber)">⏰ Falta 1h para completar ${l[0].base}h de serviço</b>
   <div style="font-size:12px;margin:4px 0 6px">Caso precise avançar o horário, avise o cliente sobre os custos extras.</div>
   ${l.map(x => `<div class="prow" style="padding:6px 0"><div class="g"><b>${esc(x.nome)}</b><span class="muted" style="font-size:12px">${esc(x.role || '')} · entrada ${esc(x.in)}</span></div>
-    <span style="font-size:12px;font-weight:700;white-space:nowrap;color:${x.passou ? 'var(--red)' : 'var(--amber)'}">${x.passou ? '⚠ passou de ' + x.base + 'h (hora extra)' : (x.faltaMin >= 60 ? '1h' : x.faltaMin + ' min') + ' · ' + x.base + 'h às ' + esc(String(x.completa).slice(-5))}</span></div>`).join('')}</div>`;
+    <span style="font-size:12px;font-weight:700;white-space:nowrap;color:${x.passou ? 'var(--red)' : 'var(--amber)'}">${x.passou ? '⚠ passou de ' + x.base + 'h (horas adicionais)' : (x.faltaMin >= 60 ? '1h' : x.faltaMin + ' min') + ' · ' + x.base + 'h às ' + esc(String(x.completa).slice(-5))}</span></div>`).join('')}</div>`;
 function alerta12h(l, chave) {
   const n = (l || []).length, ant = window['__A12' + chave]; window['__A12' + chave] = n;
   if (!(n > (ant || 0))) return;
@@ -813,14 +813,14 @@ async function abrirRelatorio(ctx) {
   try { d = await apiGet(Object.assign({ f: 'relatorio' }, ctx.t ? { t: ctx.t, ev: ctx.ev || '' } : { e: ctx.e, nome: ctx.nome })); }
   catch (e) { el.innerHTML = `<div class="box"><h3>📄 Relatório de horas</h3><div class="msg-err">⚠ ${esc(e.message || e)}</div><div class="acts">${ctx.e ? '<button class="btn" id="rOutro">Outro nome</button>' : ''}<button class="btn pri" onclick="closeP()">Fechar</button></div></div>`;
     const ro = document.getElementById('rOutro'); if (ro) ro.onclick = () => abrirRelatorio({ e: ctx.e }); return; }
-  const txt = g => '*Relatório de horas · ' + g.evento + '*\n' + d.nome + '\n' + g.dias.map(x => x.in + ' → ' + (x.out || 'em andamento') + (x.calc ? ' · ' + fmtH(x.calc.horas) + (x.calc.extra ? ' (HE ' + fmtH(x.calc.extra) + ')' : '') : '')).join('\n') +
-    '\n*Total: ' + fmtH(g.total.horas) + ' · ' + g.total.diarias + ' diária' + (g.total.diarias !== 1 ? 's' : '') + ' · hora extra ' + fmtH(g.total.extra) + '*' + (g.pendentes ? '\n(' + g.pendentes + ' dia(s) aguardando confirmação do horário)' : '');
+  const txt = g => '*Relatório de horas · ' + g.evento + '*\n' + d.nome + '\n' + g.dias.map(x => x.in + ' → ' + (x.out || 'em andamento') + (x.calc ? ' · ' + fmtH(x.calc.horas) + (x.calc.extra ? ' (adicional ' + fmtH(x.calc.extra) + ')' : '') : '')).join('\n') +
+    '\n*Total: ' + fmtH(g.total.horas) + ' · ' + g.total.diarias + ' diária' + (g.total.diarias !== 1 ? 's' : '') + ' · horas adicionais ' + fmtH(g.total.extra) + '*' + (g.pendentes ? '\n(' + g.pendentes + ' dia(s) aguardando confirmação do horário)' : '');
   window.RL = d.eventos.map(txt);
-  el.innerHTML = `<div class="box"><h3>📄 Relatório de horas</h3><div class="muted" style="font-size:13px">${esc(d.nome)} · diária de ${d.cfg.base} h, hora extra até ${fmtH(d.cfg.limite)}</div>
+  el.innerHTML = `<div class="box"><h3>📄 Relatório de horas</h3><div class="muted" style="font-size:13px">${esc(d.nome)} · diária de ${d.cfg.base} h, horas adicionais até ${fmtH(d.cfg.limite)}</div>
     ${d.eventos.map((g, i) => `<div style="margin-top:14px;border:1px solid var(--line);border-radius:12px;padding:12px">
       <b>${esc(g.evento)}</b><span class="muted" style="font-size:12px">${g.os ? ' · ' + esc(g.os) : ''}</span>
       ${g.dias.map(x => `<div class="prow" style="padding:6px 0"><div class="g"><span style="font-size:13px">${esc(x.in)} → ${x.out ? esc(x.out) : '<b style="color:var(--amber)">em andamento</b>'}</span>${x.role ? `<span class="muted" style="font-size:11px;display:block">${esc(x.role)}</span>` : ''}</div>
-        <div style="font-size:12px;text-align:right">${x.calc ? `<b>${fmtH(x.calc.horas)}</b><span class="muted">${x.calc.diarias} diária${x.calc.diarias > 1 ? 's' : ''}${x.calc.extra ? ' · HE ' + fmtH(x.calc.extra) : ''}</span>` : (x.out ? '<span style="color:var(--amber)">⏳ aguardando confirmação</span>' : '')}</div></div>`).join('')}
+        <div style="font-size:12px;text-align:right">${x.calc ? `<b>${fmtH(x.calc.horas)}</b><span class="muted">${x.calc.diarias} diária${x.calc.diarias > 1 ? 's' : ''}${x.calc.extra ? ' · adicional ' + fmtH(x.calc.extra) : ''}</span>` : (x.out ? '<span style="color:var(--amber)">⏳ aguardando confirmação</span>' : '')}</div></div>`).join('')}
       ${calcHtml(g.total)}
       ${g.pendentes ? `<div class="muted" style="font-size:12px;color:var(--amber)">⏳ ${g.pendentes} dia(s) ainda aguardando a confirmação do horário: entram no total depois de confirmados.</div>` : ''}
       ${g.abertos ? `<div class="muted" style="font-size:12px">${g.abertos} check-in ainda sem check-out.</div>` : ''}
@@ -992,7 +992,7 @@ function pontoCardHtml() {
   (p.diasPendentes || []).forEach(d => rows.push(`<div class="prow"><div class="g"><b>${esc(d.evento)} · ${esc(d.diaBr)}</b><span class="muted" style="font-size:12px;color:var(--amber)">⚠ Dia escalado sem registro (falta entrada e saída)</span></div>
     <button class="btn" onclick="${act({ acao: 'checkin', sub: d.evento + ' · dia ' + d.diaBr, evento: d.key, role: d.role, dia: d.dia, qr: !!d.qr, exigir: !!d.exigir, depois: loadPonto })}">${d.qr ? '▣ ' : ''}Registrar dia</button></div>`));
   const rec = p.recentes.slice(0, 3).map(r => `<div class="prow"><div class="g"><b>${esc(r.evento)}</b><span class="muted" style="font-size:12px">${esc(r.in)} → ${esc(r.out)}</span></div>
-    <div style="text-align:right;font-size:12px"><b>${r.calc ? r.calc.diarias + ' diária' + (r.calc.diarias > 1 ? 's' : '') : ''}</b><span class="muted">${r.calc ? fmtH(r.calc.horas) + (r.calc.extra ? ' · HE ' + fmtH(r.calc.extra) : '') : (r.conf ? '⏳ em conferência' : '')}</span></div></div>`).join('');
+    <div style="text-align:right;font-size:12px"><b>${r.calc ? r.calc.diarias + ' diária' + (r.calc.diarias > 1 ? 's' : '') : ''}</b><span class="muted">${r.calc ? fmtH(r.calc.horas) + (r.calc.extra ? ' · adicional ' + fmtH(r.calc.extra) : '') : (r.conf ? '⏳ em conferência' : '')}</span></div></div>`).join('');
   window.PQ = p.coordena || [];
   const coord = window.PQ.map((c, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g"><b>▣ ${esc(c.nome)}</b><span class="muted" style="font-size:12px">Você é o responsável · mostre o QR Code para a equipe</span></div>
     <button class="btn pri" onclick="mostrarQR({ t: TOKEN, ev: window.PQ[${i}].key })">Mostrar QR Code</button>
@@ -1061,8 +1061,8 @@ async function initEvento() {
       ${d.motorista && !aberto ? '<button class="btn big" id="bMot" style="width:100%;justify-content:center;margin-top:8px">🚐 Check-in motorista</button>' : ''}
       <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirRelatorio({ e: EV })">📄 Relatório das minhas horas neste evento</button>
       <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="abrirContestacao({ e: EV })">💰 Contestação de diárias</button>
-      <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · hora extra até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}${d.qr ? ' · ▣ Escaneie o QR Code na tela do responsável.' : ''}</div></div>
-    ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · HE ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
+      <div class="muted" style="font-size:12px;margin-top:10px">Diária de ${d.cfg.base} h · horas adicionais até ${fmtH(d.cfg.limite)}, depois conta outra diária.${d.exigir ? (d.lugar ? ` · 📍 Registro liberado a até ${d.lugar.raio} m de ${esc(d.lugar.nome)}.` : ' · 📍 Localização obrigatória.') : ''}${d.qr ? ' · ▣ Escaneie o QR Code na tela do responsável.' : ''}</div></div>
+    ${hist.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Seus registros neste celular</h3>${hist.map(h => `<div class="prow"><div class="g"><span class="muted" style="font-size:12px">${esc(h.in)} → ${esc(h.out)}</span></div><div style="font-size:12px;text-align:right"><b>${h.calc.diarias} diária${h.calc.diarias > 1 ? 's' : ''}</b><span class="muted">${fmtH(h.calc.horas)}${h.calc.extra ? ' · adicional ' + fmtH(h.calc.extra) : ''}</span></div></div>`).join('')}</div>` : ''}
     <div id="alertaCard">${alertaCardHtml()}</div>
     <div class="foot">Os registros vão direto para a coordenação.</div>`;
     document.getElementById('bIn').onclick = () => ponto('checkin');
@@ -1091,7 +1091,7 @@ function fechPeriodoHtml(D, F, pre) {
 }
 function fechEventoHtml(e) {
   return `<div style="padding:8px 0;border-top:1px dashed var(--line);font-size:13px"><b>${esc(e.evento)}</b> <span class="muted">· ${esc(e.dias)}${e.funcoes ? ' · ' + esc(e.funcoes) : ''}</span><br>
-    <span>${!e.diarias && e.escala && !e.pend ? '<span style="color:var(--amber)">⚠ escalado, sem registro de horário</span> · ' : ''}${e.diarias} diária(s)${e.extra ? ' · HE ' + fmtH(e.extra) : ''}${e.refeicao ? ' · refeição ' + brlC(e.refeicao) : ''}${e.valor ? ' · <b>' + brlC(e.valor) + '</b>' : ''}${e.semValor ? ` · <span style="color:var(--amber)">${e.semValor} sem cachê cadastrado</span>` : ''}${e.pend ? ` · <span style="color:var(--amber)">${e.pend} pendente(s)</span>` : ''}</span>
+    <span>${!e.diarias && e.escala && !e.pend ? '<span style="color:var(--amber)">⚠ escalado, sem registro de horário</span> · ' : ''}${e.diarias} diária(s)${e.extra ? ' · adicional ' + fmtH(e.extra) : ''}${e.refeicao ? ' · refeição ' + brlC(e.refeicao) : ''}${e.valor ? ' · <b>' + brlC(e.valor) + '</b>' : ''}${e.semValor ? ` · <span style="color:var(--amber)">${e.semValor} sem cachê cadastrado</span>` : ''}${e.pend ? ` · <span style="color:var(--amber)">${e.pend} pendente(s)</span>` : ''}</span>
     ${e.fora.map(f => `<div style="font-size:12px;margin-top:4px;color:var(--amber)">↪ ${esc(f.dias)} (${f.n} dia${f.n > 1 ? 's' : ''}) ${f.depois ? 'ficam para' : 'entram na'} a quinzena ${esc(f.quinzena)} · pagamento até ${esc(f.pagFmt)}</div>`).join('')}</div>`;
 }
 function fechCabecalho(D) {
@@ -1118,7 +1118,7 @@ function fechAdmHtml() {
   D.pessoas.forEach(p => p.obs.forEach(o => obs.push([p.nome, o])));
   const prox = obs.filter(([, o]) => o.startsWith('📌')), outras = obs.filter(([, o]) => !o.startsWith('📌'));
   const linhas = D.pessoas.map(p => `<div class="prow" style="flex-wrap:wrap;cursor:pointer" onclick="fcAbrir('${esc(p.key)}')"><div class="g" style="flex:1"><b>${esc(p.nome)}</b>
-      <span class="muted" style="font-size:12px">${p.eventos.length} evento(s) · escalado ${p.tot.escala} dia(s) · ${p.tot.diarias} diária(s)${p.tot.semRegistro ? ` · <span style="color:var(--amber)">${p.tot.semRegistro} sem registro</span>` : ''}${p.tot.extra ? ' · HE ' + fmtH(p.tot.extra) : ''}${p.funcoes ? ' · ' + esc(p.funcoes) : ''}</span>
+      <span class="muted" style="font-size:12px">${p.eventos.length} evento(s) · escalado ${p.tot.escala} dia(s) · ${p.tot.diarias} diária(s)${p.tot.semRegistro ? ` · <span style="color:var(--amber)">${p.tot.semRegistro} sem registro</span>` : ''}${p.tot.extra ? ' · adicional ' + fmtH(p.tot.extra) : ''}${p.funcoes ? ' · ' + esc(p.funcoes) : ''}</span>
       ${p.obs.some(o => o.startsWith('📌')) ? '<span style="font-size:12px;color:var(--amber)">↪ tem diárias na próxima quinzena</span>' : ''}</div>
       <div style="text-align:right"><b>${brlC(p.total)}</b>${p.tot.refeicao ? `<div class="muted" style="font-size:11px">inclui refeição ${brlC(p.tot.refeicao)}</div>` : ''}</div>
       ${FC.aberto[p.key] ? `<div style="flex-basis:100%">${p.eventos.map(fechEventoHtml).join('')}</div>` : ''}</div>`).join('');
@@ -1127,7 +1127,7 @@ function fechAdmHtml() {
       <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:13px">
         <div><div class="muted" style="font-size:11px">TÉCNICOS</div><b style="font-size:18px">${T.pessoas}</b></div>
         <div><div class="muted" style="font-size:11px">DIÁRIAS</div><b style="font-size:18px">${T.diarias}</b></div>
-        <div><div class="muted" style="font-size:11px">HORA EXTRA</div><b style="font-size:18px">${fmtH(T.extra)}</b></div>
+        <div><div class="muted" style="font-size:11px">HORAS ADICIONAIS</div><b style="font-size:18px">${fmtH(T.extra)}</b></div>
         <div><div class="muted" style="font-size:11px">REFEIÇÃO</div><b style="font-size:18px">${brlC(T.refeicao)}</b></div>
         <div><div class="muted" style="font-size:11px">TOTAL</div><b style="font-size:18px;color:var(--accent)">${brlC(T.valor + T.refeicao)}</b></div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" onclick="fcCsv()">⬇ Baixar planilha (CSV)</button><button class="btn" onclick="fechImprimir(FC.D, true)">🖨 Imprimir / PDF</button></div></div>
@@ -1140,7 +1140,7 @@ function fechAdmHtml() {
 function fcCsv() {
   const D = FC.D; if (!D) return;
   const c = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"', n = v => String(Number(v) || 0).replace('.', ',');
-  const L = [['Técnico', 'Evento', 'Dias neste fechamento', 'Função', 'Diárias', 'Hora extra (h)', 'Refeição', 'Valor diárias', 'Pendentes', 'Dias para outra quinzena'].map(c).join(';')];
+  const L = [['Técnico', 'Evento', 'Dias neste fechamento', 'Função', 'Diárias', 'Horas adicionais (h)', 'Refeição', 'Valor diárias', 'Pendentes', 'Dias para outra quinzena'].map(c).join(';')];
   D.pessoas.forEach(p => p.eventos.forEach(e => L.push([c(p.nome), c(e.evento), c(e.dias), c(e.funcoes), e.diarias, n(e.extra), n(e.refeicao), n(e.valor), e.pend,
     c(e.fora.map(f => f.dias + ' → ' + f.quinzena + ' (pag. até ' + f.pagFmt + ')').join(' | '))].join(';'))));
   L.push(''); L.push(c('Observações'));
@@ -1158,7 +1158,7 @@ function fechImprimir(D, adm) {
     <h1>${esc(VIS.nome || 'Escala Técnica')} · Fechamento ${D.quinzena ? 'quinzena ' + esc(D.quinzena) : esc(D.txt)}</h1>
     <div class="m">${D.pagFmt ? 'Pagamento até ' + esc(D.pagFmt) + ' · ' : ''}${esc(D.regra)}</div>
     ${adm ? `<div class="m">Total: ${D.totais.pessoas} técnico(s) · ${D.totais.diarias} diária(s) · ${brlC(D.totais.valor + D.totais.refeicao)}</div>` : ''}
-    ${ps.map(p => `<h2>${esc(p.nome)} — ${brlC(p.total)}</h2><table><tr><th>Evento</th><th>Dias</th><th>Função</th><th>Diárias</th><th>HE</th><th>Refeição</th><th>Valor</th></tr>${p.eventos.map(ev).join('')}</table>
+    ${ps.map(p => `<h2>${esc(p.nome)} — ${brlC(p.total)}</h2><table><tr><th>Evento</th><th>Dias</th><th>Função</th><th>Diárias</th><th>Adicional</th><th>Refeição</th><th>Valor</th></tr>${p.eventos.map(ev).join('')}</table>
       ${p.obs.map(o => `<div class="obs">${esc(o)}</div>`).join('')}`).join('') || '<p>Sem diárias neste período.</p>'}
     <script>setTimeout(()=>print(),300)<\/script></body></html>`);
   w.document.close();
@@ -1174,7 +1174,7 @@ async function abrirFechamento(q, de, ate) {
   const D = FT.D, p = D.pessoa;
   el.innerHTML = `<div class="box" style="max-height:88vh;overflow:auto"><h3>💰 Minhas diárias por quinzena</h3>${fechPeriodoHtml(D, FT, 'ft')}
     <div style="margin-top:12px">${fechCabecalho(D)}</div>
-    ${p ? `<div style="margin-top:10px;font-size:14px">${p.tot.diarias} diária(s)${p.tot.extra ? ' · HE ' + fmtH(p.tot.extra) : ''} · <b>${brlC(p.total)}</b>${p.tot.refeicao ? ` <span class="muted" style="font-size:12px">(inclui refeição ${brlC(p.tot.refeicao)})</span>` : ''}</div>
+    ${p ? `<div style="margin-top:10px;font-size:14px">${p.tot.diarias} diária(s)${p.tot.extra ? ' · adicional ' + fmtH(p.tot.extra) : ''} · <b>${brlC(p.total)}</b>${p.tot.refeicao ? ` <span class="muted" style="font-size:12px">(inclui refeição ${brlC(p.tot.refeicao)})</span>` : ''}</div>
       ${p.eventos.map(fechEventoHtml).join('')}
       ${p.obs.length ? `<div style="margin-top:10px;padding:8px 10px;border-radius:9px;background:var(--panel);font-size:12px">${p.obs.map(o => `<div style="margin:3px 0">${esc(o)}</div>`).join('')}</div>` : ''}`
     : '<div class="muted" style="margin-top:12px">Você não tem diárias neste período.</div>'}
@@ -1202,7 +1202,7 @@ function admRegs() {
 }
 function admCsv() {
   const q = v => { const s = String(v == null ? '' : v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const L = [['DATA', 'NOME', 'EVENTO', 'OS', 'FUNÇÃO', 'ENTRADA', 'SAÍDA', 'HORAS', 'DIÁRIAS', 'HORA EXTRA', 'ALMOÇO', 'JANTA', 'OBSERVAÇÕES', 'ORIGEM', 'LOCALIZAÇÃO ENTRADA', 'LOCALIZAÇÃO SAÍDA', 'DISTÂNCIA (m)'].join(';')];
+  const L = [['DATA', 'NOME', 'EVENTO', 'OS', 'FUNÇÃO', 'ENTRADA', 'SAÍDA', 'HORAS', 'DIÁRIAS', 'HORAS ADICIONAIS', 'ALMOÇO', 'JANTA', 'OBSERVAÇÕES', 'ORIGEM', 'LOCALIZAÇÃO ENTRADA', 'LOCALIZAÇÃO SAÍDA', 'DISTÂNCIA (m)'].join(';')];
   admRegs().forEach(r => L.push([r.data, r.nome, r.evento, r.os, r.role, r.in, r.out, r.calc ? fmtH(r.calc.horas) : '', r.calc ? r.calc.diarias : '', r.calc ? fmtH(r.calc.extra) : '', r.almoco, r.janta, r.obs, r.origem, r.locIn, r.locOut, r.dist].map(q).join(';')));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + L.join('\r\n')], { type: 'text/csv' }));
@@ -1420,13 +1420,13 @@ function admDraw() {
       })()}
       ${D.regsOcultos ? `<div class="muted" style="font-size:12px;margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">🗂 Mostrando os registros dos últimos ${D.regsDias} dias (mais os sem saída e os aguardando conferência). ${D.regsOcultos} mais antigo(s) não carregado(s), para o app abrir rápido. <button class="btn" id="admTodosB" style="padding:5px 10px;font-size:12px" onclick="admTodos()">Carregar todos</button></div>` : ''}
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Totais ${AD.ev ? 'do evento' : ''} · ${regs.length} registro(s)</h3>
-        ${Object.values(tot).sort((a, b) => a.n.localeCompare(b.n)).map(t => `<div class="prow"><div class="g"><b>${esc(t.n)}</b>${t.ab ? `<span style="color:var(--amber);font-size:12px">${t.ab} em aberto</span>` : ''}${t.cf ? `<span style="color:var(--amber);font-size:12px">${t.cf} aguardando conferência</span>` : ''}</div><div style="text-align:right;font-size:12px"><b>${t.d} diária${t.d !== 1 ? 's' : ''}</b><span class="muted">${fmtH(t.h)} · HE ${fmtH(t.e)}</span></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>
+        ${Object.values(tot).sort((a, b) => a.n.localeCompare(b.n)).map(t => `<div class="prow"><div class="g"><b>${esc(t.n)}</b>${t.ab ? `<span style="color:var(--amber);font-size:12px">${t.ab} em aberto</span>` : ''}${t.cf ? `<span style="color:var(--amber);font-size:12px">${t.cf} aguardando conferência</span>` : ''}</div><div style="text-align:right;font-size:12px"><b>${t.d} diária${t.d !== 1 ? 's' : ''}</b><span class="muted">${fmtH(t.h)} · adicional ${fmtH(t.e)}</span></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>
       <div class="card"><h3 style="margin:0 0 6px;font-size:15px">Registros</h3>
         ${!regs.length && D.registros.length && (AD.ev || AD.q) ? `<div class="msg-ok" style="margin:6px 0">Nenhum registro com esse filtro (${D.registros.length} no total). <a href="#" onclick="AD.ev='';AD.q='';admDraw();return false" style="color:inherit;font-weight:700">Limpar filtro</a></div>` : ''}
         ${regs.map((r, i) => `<div class="prow" style="align-items:flex-start"><div class="g"><b>${esc(r.nome)}</b><span class="muted" style="font-size:12px">${esc(r.evento)} · ${esc(r.origem || '')}</span>
           <div style="font-size:13px;margin-top:4px">${esc(r.in)} ${mapa(r.locIn)} → ${r.out ? esc(r.out) + ' ' + mapa(r.locOut) : '<b style="color:var(--amber)">sem saída</b>'}${r.dist !== '' && r.dist != null ? ` <span class="muted">(${r.dist} m do local)</span>` : ''}</div>
           ${r.calc && r.calc.horas > 24 ? `<div style="font-size:12px;color:var(--red);margin-top:2px">⚠ Mais de 24 h no mesmo registro: o certo é um registro por dia. Toque em ✎ e feche com a saída do primeiro dia.</div>` : ''}
-          ${r.calc ? `<div style="font-size:12px;margin-top:2px"><b>${r.calc.diarias} diária${r.calc.diarias > 1 ? 's' : ''}</b> · ${fmtH(r.calc.horas)} · HE ${fmtH(r.calc.extra)}</div>` : ''}
+          ${r.calc ? `<div style="font-size:12px;margin-top:2px"><b>${r.calc.diarias} diária${r.calc.diarias > 1 ? 's' : ''}</b> · ${fmtH(r.calc.horas)} · adicional ${fmtH(r.calc.extra)}</div>` : ''}
           ${r.almoco || r.janta ? `<div class="muted" style="font-size:12px">Almoço: ${esc(r.almoco || '—')} · Janta: ${esc(r.janta || '—')}</div>` : ''}
           ${r.obs ? `<div class="muted" style="font-size:12px">${esc(r.obs)}</div>` : ''}${r.editado ? `<div class="muted" style="font-size:11px;${/^[⏳⚠]/.test(r.editado) ? 'color:var(--amber)' : ''}">${/^[⏳⚠✔]/.test(r.editado) ? '' : '✎ '}${esc(r.editado)}</div>` : ''}</div>
           <div style="display:flex;flex-direction:column;gap:6px"><button class="btn" onclick="admEditar(window.AR[${i}])">✎</button><button class="btn" onclick="admExcluir(window.AR[${i}])">🗑</button></div></div>`).join('') || '<div class="muted">Nenhum registro.</div>'}</div>`;
@@ -1555,9 +1555,9 @@ function admDraw() {
     const c = D.cfg; window.ALC = D.locais;
     const nomesLocais = [...new Set(D.eventos.map(e => e.local).filter(Boolean))].sort();
     body = visualCardHtml() + `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">Regra da diária</h3>
-      <div class="muted" style="font-size:12px">Horas corridas, sem desconto de almoço. Até a diária = 1 diária; passou = hora extra; se a hora extra passar do limite, vira outra diária (dobra).</div>
+      <div class="muted" style="font-size:12px">Horas corridas, sem desconto de almoço. Até a diária = 1 diária; passou = horas adicionais; se as horas adicionais passarem do limite, vira outra diária.</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0"><label>Horas de uma diária<input id="rB" type="number" step="0.5" value="${c.base}"></label>
-      <label>Hora extra máxima antes da dobra (horas, ex.: 5.5 = 5h30)<input id="rL" type="number" step="0.25" value="${c.limite}"></label>
+      <label>Horas adicionais máximas antes de virar outra diária (horas, ex.: 5.5 = 5h30)<input id="rL" type="number" step="0.25" value="${c.limite}"></label>
       <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="rX" type="checkbox" style="width:auto;margin:0" ${c.exigirLocal ? 'checked' : ''}> Exigir localização no check-in em todos os eventos (dentro do raio do local, quando ele estiver cadastrado)</label>
       <label style="display:flex;gap:8px;align-items:center;text-transform:none;font-size:14px;color:var(--text)"><input id="rC" type="checkbox" style="width:auto;margin:0" ${c.chat !== false ? 'checked' : ''}> 💬 Chat de atendimento ativo nos links dos técnicos</label>
       <label>Prazo para registrar ou corrigir horário e usar o QR Code depois do evento<select id="rP">${[[36, '36 horas'], [48, '48 horas'], [72, '3 dias'], [168, '7 dias (padrão)'], [360, '15 dias'], [720, '30 dias'], [0, 'Sem limite']].map(([v, l]) => `<option value="${v}" ${(c.prazoH == null ? 168 : c.prazoH) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -1573,7 +1573,7 @@ function admDraw() {
       <div id="lMsg"></div><button class="btn pri" style="margin-top:12px" id="lGo">Salvar local</button></div>`;
   }
   app.style.maxWidth = '980px';
-  app.innerHTML = `<header>${logoHtml()}<div><h1>Administração de horários</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · HE até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
+  app.innerHTML = `<header>${logoHtml()}<div><h1>Administração de horários</h1><div class="sub">${esc(D.email)} · diária ${D.cfg.base} h · adicionais até ${fmtH(D.cfg.limite)}${D.cfg.exigirLocal ? ' · localização obrigatória' : ''}</div></div></header>
     ${AD.velho ? '<div id="admVelho" class="muted" style="font-size:12px;margin:0 0 10px">⟳ Atualizando com os dados mais novos…</div>' : ''}
     ${nCont && AD.tab !== 'cont' ? `<div class="card" style="border-color:var(--amber);cursor:pointer;padding:12px 16px" onclick="AD.tab='cont';admDraw()"><b>💰 ${nCont} ${nCont > 1 ? 'contestações' : 'contestação'} de diárias aguardando resposta</b> <span class="muted" style="font-size:12px">· toque para ver</span></div>` : ''}
     <div class="tabs" style="flex-wrap:wrap">${tabs.map(([k, l]) => `<button class="btn ${AD.tab === k ? 'on' : ''}" onclick="AD.tab='${k}';${k === 'conv' ? 'CVS.d=null;' : ''}admDraw()">${l}</button>`).join('')}</div>${body}

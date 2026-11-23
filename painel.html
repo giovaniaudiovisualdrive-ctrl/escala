@@ -870,10 +870,10 @@ function vPonto() {
   $('#content').innerHTML = admCardHtml() + `
   <div class="toolbar"><input class="ctl" id="pq" placeholder="Filtrar por nome, evento ou OS…" value="${esc(S.pontoQ || '')}">
     <button class="btn" onclick="S.ponto=null;vPonto()">↻ Recarregar</button><div class="grow"></div>
-    <span class="muted" style="font-size:12px">Diária: <b>${P.cfg.base} h</b> · hora extra até <b>${fmtH(P.cfg.limite)}</b>, depois vira dobra</span>
+    <span class="muted" style="font-size:12px">Diária: <b>${P.cfg.base} h</b> · horas adicionais até <b>${fmtH(P.cfg.limite)}</b>, depois vira outra diária</span>
     <button class="btn sm" onclick="editCfgPonto()">⚙ Regra</button></div>
   <div class="grid two">
-    <div class="card" style="padding:0;overflow:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Evento</th><th>Entrada</th><th>Saída</th><th>Horas</th><th>Diárias</th><th>H. extra</th><th>Alimentação</th></tr></thead><tbody>
+    <div class="card" style="padding:0;overflow:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Evento</th><th>Entrada</th><th>Saída</th><th>Horas</th><th>Diárias</th><th>H. adicionais</th><th>Alimentação</th></tr></thead><tbody>
     ${rows.map(r => `<tr><td><b>${esc(r.nome)}</b><div class="dim" style="font-size:10px">${esc(r.origem)}</div></td><td>${esc(r.evento)}<div class="dim mono" style="font-size:10px">${esc(r.os)}</div></td>
       <td class="mono">${esc(r.in)} ${mapLink(r.locIn)}${r.dist !== '' && r.dist != null ? `<div class="dim" style="font-size:10px">${r.dist} m do local</div>` : ''}</td><td class="mono">${r.out ? esc(r.out) + ' ' + mapLink(r.locOut) : '<span class="chip amber">em aberto</span>'}${r.editado ? `<div class="dim" style="font-size:10px">✎ ${esc(r.editado)}</div>` : ''}</td>
       <td class="mono">${r.calc ? fmtH(r.calc.horas) : '—'}</td><td class="mono">${r.calc ? r.calc.diarias : '—'}</td><td class="mono">${r.calc ? fmtH(r.calc.extra) : '—'}</td>
@@ -881,7 +881,7 @@ function vPonto() {
     </tbody></table></div>
     <div class="card"><h3>Totais por pessoa <span class="muted">· ${rows.length} registro(s)</span></h3><div class="list">
       ${totals.map(t => `<div class="row"><div class="grow"><b>${esc(t.nome)}</b><div class="dim" style="font-size:11px">${t.reg} registro(s)${t.abertos ? ` · <span style="color:var(--amber)">${t.abertos} em aberto</span>` : ''}</div></div>
-        <div style="text-align:right"><div class="mono"><b>${t.diarias}</b> diária(s)</div><div class="dim mono" style="font-size:11px">${fmtH(t.horas)} · HE ${fmtH(t.extra)}</div></div></div>`).join('') || '<div class="empty">—</div>'}
+        <div style="text-align:right"><div class="mono"><b>${t.diarias}</b> diária(s)</div><div class="dim mono" style="font-size:11px">${fmtH(t.horas)} · adicional ${fmtH(t.extra)}</div></div></div>`).join('') || '<div class="empty">—</div>'}
     </div></div>
   </div>`;
   const q = $('#pq'); q.oninput = () => { S.pontoQ = q.value; const p = q.selectionStart; vPonto(); const n = $('#pq'); n.focus(); n.setSelectionRange(p, p); };
@@ -891,7 +891,7 @@ function editCfgPonto() {
   const c = S.ponto.cfg;
   modal(`<h3>⚙ Regra da diária</h3><p class="muted" style="margin-top:0">Só o administrador (dono da planilha) pode salvar. Muda o cálculo de todos os registros.</p>
     <div class="f2"><div class="field"><label>Horas de uma diária</label><input class="ctl" id="cfB" type="number" step="0.5" value="${c.base}"></div>
-    <div class="field"><label>Hora extra máx. antes da dobra (h)</label><input class="ctl" id="cfL" type="number" step="0.25" value="${c.limite}"></div></div>
+    <div class="field"><label>Horas adicionais máx. antes de virar outra diária (h)</label><input class="ctl" id="cfL" type="number" step="0.25" value="${c.limite}"></div></div>
     <label style="display:flex;gap:8px;align-items:center;margin-top:12px;cursor:pointer"><input type="checkbox" id="cfX" ${c.exigirLocal ? 'checked' : ''}> Exigir localização em <b>todos</b> os eventos</label>
     <label style="display:flex;gap:8px;align-items:center;margin-top:8px;cursor:pointer"><input type="checkbox" id="cfC" ${c.chat !== false ? 'checked' : ''}> 💬 Chat de atendimento ativo nos links dos técnicos</label>
     <div class="acts"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn pri" id="cfGo">Salvar</button></div>`);
