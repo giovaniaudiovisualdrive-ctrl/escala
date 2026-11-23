@@ -240,7 +240,7 @@ select.opsel.none{border-color:var(--amber);color:var(--amber)}
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand"><div class="logo"><img src="https://giovaniaudiovisualdrive-ctrl.github.io/escala/logo.png" alt="" onerror="this.remove()"><span style="font-family:Arial,sans-serif;font-size:19px;letter-spacing:-1px">bt</span></div><div><b data-vis="nome">Escala Técnica</b><small data-vis="sub">base técnica · vídeo</small></div></div>
+    <div class="brand"><div class="logo"><img src="logo.png" alt="" onerror="this.remove()"><span style="font-family:Arial,sans-serif;font-size:19px;letter-spacing:-1px">bt</span></div><div><b data-vis="nome">Escala Técnica</b><small data-vis="sub">base técnica · vídeo</small></div></div>
     <button class="nav on" data-view="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Visão geral</button>
     <button class="nav" data-view="events"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Eventos</button>
     <button class="nav" data-view="team"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2.3.2 4 1.8 4.5 4.5"/></svg>Agenda da equipe</button>
@@ -336,10 +336,21 @@ function openDrawer(html) { $('#drawer').innerHTML = html; $('#drawer').classLis
 function closeDrawer() { $('#drawer').classList.remove('on'); $('#ovl').classList.remove('on'); S.drawer = null; S.drawerEdit = false; }
 $('#ovl').onclick = closeDrawer;
 $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
+/* proteção: junto com a linha vai o nome do evento; se a planilha mudou (linhas apagadas/incluídas), o servidor recusa */
+function evNomeDe(row) { const e = ((S.data && S.data.events) || []).find(x => x.row === +row); return e ? e.nome : ''; }
+function comNome(args) {
+  const a = args.slice();
+  if (a[0] && typeof a[0] === 'object' && !Array.isArray(a[0]) && a[0].row && !a[0].evNome) a[0] = Object.assign({}, a[0], { evNome: evNomeDe(a[0].row) });
+  return a;
+}
 async function run(fn, args) {
   loading(true); S.busy = true;
-  try { const r = await api(fn, ...args); return r; }
-  catch (e) { toast('⚠ ' + esc(e && e.message || e), true); throw e; }
+  try { const r = await api(fn, ...comNome(args)); return r; }
+  catch (e) {
+    toast('⚠ ' + esc(e && e.message || e), true);
+    if (/planilha mudou/i.test(String(e && e.message || e))) setTimeout(() => load(), 300);   // recarrega sozinho
+    throw e;
+  }
   finally { loading(false); S.busy = false; }
 }
 
@@ -588,7 +599,7 @@ function confirmarEscalacao(row) {
 async function loadEvLocal(row) {
   const box = () => $('#evLocal');
   let c;
-  try { c = await api('getEventoCfg', S.sheet, row); } catch (err) { if (box()) box().innerHTML = `<h3>📍 Local do check-in</h3><div class="muted">⚠ ${esc(err.message || err)}</div>`; return; }
+  try { c = await api('getEventoCfg', S.sheet, row, evNomeDe(row)); } catch (err) { if (box()) box().innerHTML = `<h3>📍 Local do check-in</h3><div class="muted">⚠ ${esc(err.message || err)}</div>`; return; }
   if (!box() || S.drawer !== row) return;
   const mapa = c.lat ? `<a href="https:\/\/www.google.com/maps?q=${c.lat},${c.lng}" target="_blank">ver no mapa</a>` : '';
   box().innerHTML = `<h3>📍 Local do check-in <span class="muted">· usado para conferir o GPS de quem faz check-in</span></h3>
@@ -809,7 +820,7 @@ function vPerson() {
 
 /* ---------------- Ponto ---------------- */
 async function linkCheckin(row) {
-  const r = await run('getLinkEvento', [S.sheet, row]);
+  const r = await run('getLinkEvento', [S.sheet, row, evNomeDe(row)]);
   if (!r.link) return toast('Publique o App da Web para gerar links.', true);
   const msg = `*Check-in / check-out · ${r.nome}*\nFaça seu check-in ao chegar e o check-out ao sair:\n${r.link}`;
   modal(`<h3>⏱ Link de check-in · ${esc(r.nome)}</h3>

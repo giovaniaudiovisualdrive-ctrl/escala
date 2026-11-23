@@ -1196,7 +1196,57 @@ async function abrirFechamento(q, de, ate) {
 }
 function ftQ(id) { abrirFechamento(id); }
 function ftPer() { const de = document.getElementById('ftDe').value, ate = document.getElementById('ftAte').value; if (!de || !ate) return avisar('Escolha as duas datas.'); abrirFechamento('', de, ate); }
-const AD = { tab: ['reg', 'links', 'chat', 'escala', 'coordg', 'conv', 'fech', 'regra'].includes(new URLSearchParams(location.search).get('tab')) ? new URLSearchParams(location.search).get('tab') : 'reg', ev: '', q: '', d: null };
+/* ----- 🗑 Exclusões (ADM): tudo que se apaga passa pela Lixeira (dá para restaurar) ----- */
+const EX = { tipo: 'evento', q: '', d: null, carregando: false, erro: '' };
+async function exCarregar() {
+  EX.carregando = true; EX.erro = '';
+  try { EX.d = await apiGet({ f: 'exclusoes', a: ADM, tipo: EX.tipo, q: EX.q }); }
+  catch (e) { EX.erro = e.message || String(e); EX.d = null; }
+  EX.carregando = false; if (AD.tab === 'exc') admDraw();
+}
+function exTipo(t) { EX.tipo = t; EX.q = ''; EX.d = null; admDraw(); }
+function exBuscar() { EX.q = document.getElementById('exQ').value; EX.d = null; admDraw(); }
+async function exExcluir(i) {
+  const it = EX.d.itens[i], rot = (EX.d.tipos.find(t => t.tipo === EX.tipo) || {}).rotulo || '';
+  if (it.ultimo) return avisar('Este é o único evento da aba: ele serve de modelo para criar os próximos. Edite os dados dele em vez de excluir.');
+  if (!confirm(`Excluir?\n\n${it.resumo}\n(${rot.replace(/^\S+\s/, '')})\n\nVai para a Lixeira: dá para restaurar depois.`)) return;
+  try { const r = await admPost({ acao: 'adm_exc_excluir', tipo: EX.tipo, row: it.row, sig: it.sig, aba: it.aba || '', grupo: it.grupo || '' }); avisar('✅ ' + r.msg); }
+  catch (e) { avisar('⚠ ' + (e.message || e)); }
+  EX.d = null; admDraw();
+}
+async function exRestaurar(id) {
+  if (!confirm('Restaurar este item? Ele volta para o fim da aba de origem.')) return;
+  try { const r = await admPost({ acao: 'adm_exc_restaurar', id }); avisar('✅ ' + r.msg); } catch (e) { avisar('⚠ ' + (e.message || e)); }
+  EX.d = null; admDraw();
+}
+async function exApagar(id) {
+  if (!confirm('Apagar DE VEZ da Lixeira?\n\nDepois disso não dá mais para restaurar.')) return;
+  try { const r = await admPost({ acao: 'adm_exc_apagar', id }); avisar(r.msg); } catch (e) { avisar('⚠ ' + (e.message || e)); }
+  EX.d = null; admDraw();
+}
+function exclusoesHtml() {
+  if (!EX.d && !EX.carregando && !EX.erro) exCarregar();
+  const D = EX.d;
+  const tipos = (D ? D.tipos : [{ tipo: EX.tipo, rotulo: '…' }]).map(t => `<button class="btn ${EX.tipo === t.tipo ? 'on' : ''}" style="font-size:12px;padding:6px 10px" onclick="exTipo('${t.tipo}')">${esc(t.rotulo)}</button>`).join('');
+  const lista = !D ? `<div class="muted" style="margin-top:10px">${EX.erro ? '⚠ ' + esc(EX.erro) + ` <button class="btn" onclick="EX.erro='';admDraw()">Tentar de novo</button>` : '<div class="spin" style="margin:8px 0"></div>Carregando…'}</div>`
+    : (D.itens || []).length ? D.itens.map((it, i) => `<div class="prow"><div class="g" style="flex:1;min-width:0"><b style="word-break:break-word">${esc(it.resumo)}</b><span class="muted" style="font-size:11px">${esc(it.detalhe || '')}</span></div>
+        <button class="btn" style="color:var(--red,#e3262b);border-color:var(--red,#e3262b)" onclick="exExcluir(${i})">🗑 Excluir</button></div>`).join('')
+    : `<div class="muted" style="margin-top:10px">${EX.q ? 'Nada encontrado com “' + esc(EX.q) + '”.' : 'Nada para excluir aqui.'}</div>`;
+  const lix = D ? D.lixeira : [];
+  return `<div class="card"><h3 style="margin:0 0 4px">🗑 Exclusões</h3>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">Exclua por aqui, nunca apagando linhas direto na planilha: o app confere se a linha ainda é a mesma, apaga o bloco inteiro do jeito certo e guarda uma cópia na <b>Lixeira</b> (dá para restaurar).</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${tipos}</div>
+      <div style="display:flex;gap:8px;margin-top:10px"><input id="exQ" value="${esc(EX.q)}" placeholder="Buscar por nome, evento, data…" style="flex:1;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px" onkeydown="if(event.key==='Enter')exBuscar()"><button class="btn" onclick="exBuscar()">Buscar</button></div>
+      <div style="margin-top:8px">${lista}</div>
+      ${D && (D.itens || []).length >= 300 ? '<div class="muted" style="font-size:12px;margin-top:6px">Mostrando os 300 mais recentes: use a busca para achar os outros.</div>' : ''}</div>
+    <div class="card"><h3 style="margin:0 0 4px">♻ Lixeira</h3>
+      <div class="muted" style="font-size:12px;margin-bottom:6px">Tudo que foi excluído pelo app (também pelas outras abas). Restaurar devolve para o fim da aba de origem; os links voltam a funcionar.</div>
+      ${lix.length ? lix.map(x => `<div class="prow" style="${x.restaurado ? 'opacity:.55' : ''}"><div class="g" style="flex:1;min-width:0"><b style="word-break:break-word">${esc(x.desc.replace(/ — parte \d+$/, ''))}</b>
+        <span class="muted" style="font-size:11px">${esc(x.rotulo)} · excluído em ${esc(x.em)} por ${esc(x.por)}${x.restaurado ? ' · restaurado em ' + esc(x.restaurado) : ''}</span></div>
+        ${x.restaurado ? '' : `<button class="btn" onclick="exRestaurar('${esc(x.id)}')">↩ Restaurar</button>`}<button class="btn" title="Apagar de vez" onclick="exApagar('${esc(x.id)}')">✕</button></div>`)
+        .filter((h, i, a) => a.indexOf(h) === i).join('') : '<div class="muted">A Lixeira está vazia.</div>'}</div>`;
+}
+const AD = { tab: ['reg', 'links', 'chat', 'escala', 'coordg', 'conv', 'fech', 'exc', 'regra'].includes(new URLSearchParams(location.search).get('tab')) ? new URLSearchParams(location.search).get('tab') : 'reg', ev: '', q: '', d: null };
 function copiar(t) {
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(() => avisar('📋 Copiado.'), () => prompt('Copie:', t));
   else prompt('Copie:', t);
@@ -1398,7 +1448,7 @@ function admDraw() {
   const D = AD.d, app = document.getElementById('app');
   const nChat = AD.chat ? AD.chat.naoLidas : 0;
   const nCont = (D.contestacoes || []).filter(c => c.status === 'ABERTA' || c.status === 'EM ANÁLISE').length;
-  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['acessos', '🔐 Acessos'], ['cont', '💰 Contestações' + (nCont ? ` (${nCont})` : '')], ['conv', '📣 Convocação'], ['fech', '🧾 Fechamento'], ['regra', '⚙ Configurações']];
+  const tabs = [['reg', 'Registros'], ['links', 'Links de check-in'], ['chat', '💬 Atendimento' + (nChat ? ` (${nChat})` : '')], ['escala', 'Escala'], ['coordg', '🧾 Cadastro'], ['acessos', '🔐 Acessos'], ['cont', '💰 Contestações' + (nCont ? ` (${nCont})` : '')], ['conv', '📣 Convocação'], ['fech', '🧾 Fechamento'], ['exc', '🗑 Exclusões'], ['regra', '⚙ Configurações']];
   let body = '';
   if (AD.tab === 'chat') {
     const C = AD.chat || { conversas: [], msgs: [], ativo: true };
@@ -1552,6 +1602,8 @@ function admDraw() {
         <label>Nome<input id="cgN" list="cgL" placeholder="Ex.: ERIC" autocapitalize="characters"><datalist id="cgL">${(D.equipe || []).map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
         <label>Celular (WhatsApp)<input id="cgW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
       <div id="cgMsg"></div><button class="btn pri" style="margin-top:12px" id="cgGo">➕ Cadastrar coordenador</button></div>`;
+  } else if (AD.tab === 'exc') {
+    body = exclusoesHtml();
   } else if (AD.tab === 'fech') {
     body = fechAdmHtml();
   } else if (AD.tab === 'conv') {
