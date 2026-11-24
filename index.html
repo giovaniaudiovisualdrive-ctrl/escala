@@ -1433,6 +1433,40 @@ async function acsAcao(acao, i) {
   if (!confirm(pergunta)) return;
   try { const r = await admPost({ acao, email: u.email }); avisar(r.msg); if (AC.edit === u.email) AC.edit = null; await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
 }
+function cadListaDraw() {
+  const el = document.getElementById('cadLista'); if (!el) return;
+  const q = norm(AD.cadQ || ''), f = AD.cadF || '';
+  const stCad = c => c.status === 'PREENCHIDO' ? `<span style="font-size:12px;color:var(--accent)">✅ preenchido${c.preenchido ? ' ' + esc(c.preenchido) : ''}</span>`
+    : c.status === 'IMPORTADO' ? '<span style="font-size:12px" class="muted">📥 importado do banco antigo</span>'
+    : `<span style="font-size:12px;color:var(--amber)">⏳ aguardando preenchimento${c.convidado ? ' · enviado ' + esc(c.convidado) : ''}</span>`;
+  const lista = window.ACAD.map((c, i) => ({ c, i })).filter(({ c }) => {
+    if (f === 'dup' && !(c.duplicados || []).length) return false;
+    if (f === 'bloq' && !c.bloqueio) return false;
+    if (f === 'venc' && !(c.vencimentos || []).some(v => v.situacao !== 'OK')) return false;
+    if (f === 'agu' && c.status !== 'AGUARDANDO') return false;
+    return !q || norm([c.nome, c.apelido, c.completo, c.funcao, c.telFmt, c.equipe, c.nrs, c.bloqueio].join(' ')).includes(q);
+  }).sort((a, b) => a.c.nome.localeCompare(b.c.nome));
+  const nDup = window.ACAD.filter(c => (c.duplicados || []).length).length;
+  el.innerHTML = (nDup && f !== 'dup' ? `<div class="prow" style="border-color:var(--red);background:rgba(227,38,43,.08)"><div class="g"><b style="color:var(--red)">🟥 ${nDup} cadastro(s) parecem duplicados</b><span class="muted" style="font-size:12px">Mesmo CPF, celular ou nome. Veja e escolha qual manter.</span></div><button class="btn" onclick="AD.cadF='dup';document.getElementById('cadF').value='dup';cadListaDraw()">Ver</button></div>` : '') +
+  (lista.length ? lista.map(({ c, i }) => `<div class="prow" style="flex-wrap:wrap;${c.bloqueio || (c.duplicados || []).length ? 'border-color:var(--red)' : ''}${(c.duplicados || []).length ? ';background:rgba(227,38,43,.08)' : ''}"><div class="g" style="flex-basis:100%">
+      <b>${esc(c.nome)}${c.apelido && c.apelido !== c.nome ? ' <span class="muted" style="font-weight:400">(' + esc(c.apelido) + ')</span>' : ''}</b>
+      <span class="muted" style="font-size:12px">${[c.completo, c.telFmt, c.equipe].filter(Boolean).map(esc).join(' · ')}</span>
+      ${c.funcao ? `<span style="font-size:12px">🎛 ${esc(c.funcao)}</span>` : ''}
+      ${c.bloqueio ? `<span style="font-size:12px;color:var(--red);font-weight:700">⛔ ${esc(c.bloqueio)}${c.motivo ? ' · ' + esc(c.motivo) : ''} (não pode ser escalado)</span>` : ''}
+      ${(c.vencimentos || []).length ? `<span style="font-size:12px">${c.vencimentos.map(v => `<span style="color:${v.situacao === 'VENCIDA' ? 'var(--red)' : v.situacao === 'VENCE LOGO' ? 'var(--amber)' : 'var(--accent)'}">${esc(v.nome)} ${esc(v.data)}${v.situacao !== 'OK' ? ' (' + v.situacao.toLowerCase() + ')' : ''}</span>`).join(' · ')}</span>` : ''}
+      ${stCad(c)}
+      ${(c.duplicados || []).map(d => `<span style="font-size:12px;color:var(--red);font-weight:700">🟥 Duplicado? ${esc(d.nome)} (mesmo ${esc([...new Set(d.por)].join(', '))})
+        <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:4px" onclick="admCadMesclar('${c.id}','${d.id}')">Manter este e juntar</button></span>`).join('')}</div>
+    <button class="btn pri" onclick="admCadEditar(${i})">✏ Ficha</button>
+    <a class="btn" style="text-decoration:none;color:inherit" href="${esc(c.waLink)}" target="_blank" rel="noopener">📲 ${c.status === 'AGUARDANDO' ? 'Mandar link' : 'Reenviar link'}</a>
+    <button class="btn" onclick="copiar(window.ACAD[${i}].link)">Copiar link</button>
+    <button class="btn" onclick="admCadDel(${i})">🗑</button></div>`).join('') : '<div class="muted" style="padding:10px 0">Nenhum técnico encontrado.</div>');
+}
+async function admCadMesclar(manter, remover) {
+  const a = window.ACAD.find(x => x.id === manter), b = window.ACAD.find(x => x.id === remover);
+  if (!confirm('Manter ' + a.nome + ' e juntar com ' + b.nome + '?\n\nOs campos vazios de ' + a.nome + ' recebem os dados de ' + b.nome + ' (funções somadas). O cadastro de ' + b.nome + ' vai para a 🗑 Lixeira (dá para restaurar).')) return;
+  try { const r = await admPost({ acao: 'adm_cad_mesclar', manter, remover }); avisar(r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
+}
 async function admCadDel(i) {
   const c = window.ACAD[i]; if (!confirm('Excluir o cadastro de ' + c.nome + '? A linha sai da planilha “CADASTRO TÉCNICOS” e o link para de funcionar. Fica na 🗑 Lixeira (menu Exclusões), de onde dá para restaurar.')) return;
   try { const r = await admPost({ acao: 'adm_cad_del', id: c.id }); avisar(r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
@@ -1568,12 +1602,12 @@ function admDraw() {
         <label>Nome (como vai aparecer na escala)<input id="cdN" placeholder="Ex.: JOÃO PEDRO" autocapitalize="characters"></label>
         <label>Celular (WhatsApp)<input id="cdW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
       <div id="cdMsg"></div><button class="btn pri" style="margin-top:12px" id="cdGo">➕ Gerar link de cadastro</button>
-      ${window.ACAD.length ? `<div class="muted" style="font-size:11px;margin-top:16px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Cadastros</div>` : ''}
-      ${window.ACAD.map((c, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(c.nome)}</b><span class="muted" style="font-size:12px">${esc(c.telFmt)}</span>${stCad(c)}</div>
-        <a class="btn ${c.status === 'PREENCHIDO' ? '' : 'pri'}" style="text-decoration:none;color:inherit" href="${esc(c.waLink)}" target="_blank" rel="noopener">📲 ${c.status === 'PREENCHIDO' ? 'Reenviar' : 'WhatsApp'}</a>
-        <button class="btn" onclick="copiar(window.ACAD[${i}].link)">Copiar link</button>
-        <button class="btn" onclick="admCadEditar(${i})">✏ Editar</button>
-        <button class="btn" onclick="admCadDel(${i})">🗑</button></div>`).join('')}</div>
+      </div>
+    ${window.ACAD.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">🗂 Banco de técnicos <span class="muted" style="font-size:12px;font-weight:400">(${window.ACAD.length})</span></h3>
+      <div class="muted" style="font-size:12px">Toque em <b>✏ Ficha</b> para ver e editar tudo do técnico: documentos, funções habilitadas, NRs e validades, veículo, avaliação e bloqueio.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><input id="cadQ" placeholder="🔎 Buscar por nome, apelido, função, CPF, placa…" style="flex:1;min-width:200px;margin:0" value="${esc(AD.cadQ || '')}" oninput="AD.cadQ=this.value;cadListaDraw()">
+        <select id="cadF" style="flex:0 0 auto;margin:0" onchange="AD.cadF=this.value;cadListaDraw()">${[['', 'Todos'], ['dup', '🟥 Possíveis duplicados'], ['bloq', '⛔ Bloqueados'], ['venc', '⚠ NR/ASO vencida ou vencendo'], ['agu', '⏳ Aguardando preenchimento']].map(([v, l]) => `<option value="${v}" ${(AD.cadF || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div id="cadLista"></div></div>` : ''}
     <div class="card"><h3 style="margin:0 0 6px;font-size:15px">🍽️ Valores de refeição</h3>
       <div class="muted" style="font-size:12px">Aparecem no link de cadastro e na agenda de cada técnico.</div>
       <div class="pm" style="position:static;display:block;background:none;padding:0"><div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1664,6 +1698,7 @@ function admDraw() {
   }
   if (AD.tab === 'coordg') {
     window.ACX = D.cacheLista || [];
+    cadListaDraw();
     document.getElementById('rfGo').onclick = async () => {
       const v = id => document.getElementById(id).value;
       try { const r = await admPost({ acao: 'adm_refeicao', almoco: v('rfA'), janta: v('rfJ'), jantaApos: v('rfH'), obs: v('rfO') }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
@@ -1956,6 +1991,7 @@ function cadForm(app, D, cfg) {
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${NRS.map(n => `<label style="display:flex;gap:6px;align-items:center;text-transform:none;font-size:14px;color:var(--text);margin:0;border:1px solid var(--line);border-radius:999px;padding:6px 12px"><input type="checkbox" class="fNr" value="${n}" ${nrsTem.indexOf(n) >= 0 ? 'checked' : ''} style="width:auto;margin:0">${n}</label>`).join('')}</div>
         ${campo('fNrOut', 'Outras NRs / certificados', 'placeholder="Ex.: NR-20, brigada…"', false, nrsOut)}
       </div>
+      ${cfg.ficha ? fichaHtml(P.ficha || {}) : ''}
       <div id="fMsg"></div>
       <button class="btn pri big" style="width:100%;justify-content:center;margin-top:14px" id="fGo">${esc(cfg.botao)}</button></div>
     <div class="foot">Os dados são tratados com sigilo e usados só para cadastro e pagamento.</div>`;
@@ -1985,7 +2021,8 @@ function cadForm(app, D, cfg) {
     try {
       const funcoes = [...funBox.querySelectorAll('.funrow')].map(d => ({ funcao: d.querySelector('.fF').value, outra: d.querySelector('.fO').value, valor: d.querySelector('.fV').value })).filter(x => x.funcao);
       const msg = await cfg.enviar({ funcoes, completo: val('fNome'), rg: val('fRg'), cpf: val('fCpf'), cnpj: val('fCnpj'),
-        nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), endereco: val('fEnd'), nrs });
+        nasc: val('fNasc'), tel: val('fTel'), telEmerg: val('fTelE'), contato: val('fCont'), pix: val('fPix'), email: val('fMail'), endereco: val('fEnd'), nrs,
+        ficha: cfg.ficha ? fichaLer() : undefined });
       app.innerHTML = `<header>${logoHtml()}<div><h1>${esc(cfg.titulo)}</h1><div class="sub">${esc(cfg.sub)}</div></div></header>
         <div class="card" style="border-color:var(--accent);text-align:center;padding:28px 18px"><div style="font-size:44px">✅</div><h2 style="margin:8px 0">${esc(cfg.ok)}</h2><div class="muted">${esc(msg)}</div>
         ${cfg.voltar ? '<button class="btn pri" id="fVoltar2" style="margin-top:16px">← Voltar</button>' : ''}</div>`;
@@ -2017,6 +2054,35 @@ async function abrirMeusDados() {
     texto: D.id ? 'Confira e corrija o que precisar. Os dados ficam só com a administração.' : 'Ainda não temos o seu cadastro: preencha para receber os pagamentos. Os dados ficam só com a administração.',
     voltar: () => location.reload(), enviar: async dados => (await apiPost({ acao: 'cad_meus', t: TOKEN, dados })).msg });
 }
+/* ficha do técnico (só ADM): validades, veículo, avaliação e bloqueio */
+const FICHA_OPC = { prioridade: ['', 'ALTA', 'INTERMEDIÁRIA', 'BAIXA'], conhecimento: ['', 'ÓTIMO', 'BOM', 'REGULAR', 'RUIM'], comportamento: ['', 'PROATIVO', 'FAZ O DELE', 'NEGATIVO'],
+  ocorrencias: ['', 'NUNCA TIVE PROBLEMAS', 'TIVE PROBLEMAS'], dirige: ['', 'SIM', 'NÃO'], veiculo: ['', 'CARRO', 'MOTO', 'CARRO E MOTO', 'CAMINHÃO'], bloqueio: ['', 'LISTA NEGRA', 'RETIDO'],
+  equipe: ['', 'VÍDEO', 'FILMAGEM', 'VEÍCULOS / TRANSPORTE'] };
+function fichaHtml(F) {
+  const iso = t => String(t || '').replace(/^(\d{2})\/(\d{2})\/(\d{4})$/, '$3-$2-$1');
+  const sel = (k, l) => { const o = FICHA_OPC[k].slice(); const v = String(F[k] || '').toUpperCase(); if (v && o.indexOf(v) < 0) o.push(v);
+    return `<label style="flex:1;min-width:150px">${l}<select id="fi_${k}">${o.map(x => `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${x ? esc(x) : '—'}</option>`).join('')}</select></label>`; };
+  const txt = (k, l, ex = '') => `<label style="flex:1;min-width:150px">${l}<input id="fi_${k}" value="${esc(F[k] || '')}" ${ex}></label>`;
+  const cert = (k, l) => `<div style="display:flex;gap:8px;flex-wrap:wrap"><label style="flex:0 0 170px">${l} – validade<input id="fi_${k}Val" type="date" value="${esc(iso(F[k + 'Val']))}"></label>
+    <label style="flex:1;min-width:180px">Link do certificado${F[k + 'Link'] ? ` · <a href="${esc(F[k + 'Link'])}" target="_blank" rel="noopener" style="text-transform:none">abrir</a>` : ''}<input id="fi_${k}Link" value="${esc(F[k + 'Link'] || '')}" placeholder="https://drive.google.com/…"></label></div>`;
+  return `<div class="card" style="margin-top:14px;border-color:var(--accent)"><h3 style="margin:0 0 4px;font-size:15px">🗂 Ficha (só a administração vê)</h3><div class="pm" style="position:static;display:block;background:none;padding:0">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${txt('apelido', 'Apelido', 'autocapitalize="characters"')}${sel('equipe', 'Equipe')}</div>
+    <div class="muted" style="font-size:11px;margin-top:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">ASO e NRs (validade e certificado)</div>
+    ${cert('aso', 'ASO')}${cert('nr10', 'NR-10')}${cert('nr18', 'NR-18')}${cert('nr35', 'NR-35')}
+    <div class="muted" style="font-size:11px;margin-top:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Veículo</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${sel('dirige', 'Dirige')}${sel('veiculo', 'Veículo próprio')}${txt('modelo', 'Modelo e cor')}${txt('placa', 'Placa', 'autocapitalize="characters"')}</div>
+    <div class="muted" style="font-size:11px;margin-top:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Avaliação</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${sel('prioridade', 'Prioridade')}${sel('conhecimento', 'Conhecimento técnico')}${sel('comportamento', 'Comportamento')}${sel('ocorrencias', 'Ocorrências')}</div>
+    ${txt('acoes', 'Ações / histórico', 'placeholder="Ex.: cancelou data, chegou atrasado"')}
+    ${txt('obs', 'Observações')}
+    <div class="muted" style="font-size:11px;margin-top:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;color:var(--red)">Bloqueio</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${sel('bloqueio', 'Bloqueio (impede escalar)')}${txt('motivo', 'Motivo do bloqueio')}</div></div></div>`;
+}
+function fichaLer() {
+  const o = {}; ['apelido', 'equipe', 'prioridade', 'conhecimento', 'comportamento', 'ocorrencias', 'acoes', 'asoVal', 'asoLink', 'nr10Val', 'nr10Link', 'nr18Val', 'nr18Link', 'nr35Val', 'nr35Link',
+    'dirige', 'veiculo', 'modelo', 'placa', 'obs', 'bloqueio', 'motivo'].forEach(k => { const e = document.getElementById('fi_' + k); o[k] = e ? e.value : ''; });
+  return o;
+}
 /* ADM: editar o cadastro de qualquer técnico */
 async function admCadEditar(i) {
   const c = window.ACAD[i], app = document.getElementById('app');
@@ -2024,8 +2090,8 @@ async function admCadEditar(i) {
   let D;
   try { D = await apiGet({ f: 'meucad', a: ADM, id: c.id }); } catch (e) { avisar('⚠ ' + (e.message || e)); admDraw(); return; }
   const voltar = async () => { await admCarregar(); admDraw(); };
-  cadForm(app, D, { titulo: 'Editar cadastro', sub: c.nome + (c.status ? ' · ' + c.status.toLowerCase() : ''), botao: '💾 Salvar cadastro', ok: 'Cadastro salvo!', parcial: true,
-    texto: 'Edição pela administração: pode salvar mesmo com campos em branco (o cadastro só fica “preenchido” quando tiver tudo). Funções que você tirar daqui saem de “Funções e cachês” (ficam na Lixeira).',
+  cadForm(app, D, { titulo: 'Ficha do técnico', sub: c.nome + (c.status ? ' · ' + c.status.toLowerCase() : ''), botao: '💾 Salvar ficha', ok: 'Ficha salva!', parcial: true, ficha: true,
+    texto: 'Edição pela administração: pode salvar com campos em branco. Em “Funções” ficam as funções em que ele está habilitado (o valor é opcional; com valor, vai para “Funções e cachês”).',
     voltar, enviar: async dados => (await admPost({ acao: 'adm_cad_editar', id: c.id, dados })).msg });
 }
 
