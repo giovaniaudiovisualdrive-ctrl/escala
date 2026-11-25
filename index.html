@@ -1851,6 +1851,7 @@ function convHtml() {
     <div class="muted" style="font-size:12px;margin-top:6px">👤 Responsável: ${(e.resp || []).length ? e.resp.map(esc).join('; ') : '<span style="color:var(--amber)">nenhum — defina o coordenador do evento (ou o responsável em 📍 Local)</span>'}</div>
     ${!e.endereco || !e.entrada ? `<div style="font-size:12px;color:var(--amber);margin-top:6px">${!e.endereco ? 'Sem endereço' : ''}${!e.endereco && !e.entrada ? ' e sem' : !e.entrada ? 'Sem' : ''}${!e.entrada ? ' horário de chegada' : ''}: a mensagem sai sem ${!e.endereco ? 'o endereço' : ''}${!e.endereco && !e.entrada ? ' e ' : ''}${!e.entrada ? '“a confirmar” no horário' : ''}.</div>` : ''}
     <button class="btn" style="width:100%;justify-content:center;margin-top:12px" onclick="convGrupo(${ei})">👥 Mensagem para o grupo do evento</button>
+    <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="listaEquipe(window.CVE[${ei}].key)">📋 Lista da equipe em Excel (credenciamento)</button>
     <button class="btn pri" style="width:100%;justify-content:center;margin-top:12px" onclick="convFila(${ei})">▶ Enviar para todos${falta ? ` (${falta} pendente${falta > 1 ? 's' : ''})` : ' de novo'}</button>
     ${e.pessoas.map((p, pi) => pessoa(e, ei, p, pi)).join('')}` : ''}</div>`; };
   return `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">📣 Convocação pelo WhatsApp</h3>
@@ -1910,6 +1911,102 @@ function convFilaAmanha() {
   let it = window.CVA.filter(([ei, pi]) => !CVS.d.eventos[ei].pessoas[pi].enviado);
   if (!it.length) { if (!confirm('Todos de amanhã já receberam. Enviar de novo?')) return; it = window.CVA.slice(); }
   convAbrirFila(it, 'Amanhã');
+}
+/* ===== Lista da equipe em Excel (o cliente pede para credenciar: nome, CPF, nascimento, e-mail…) ===== */
+const LEQ_CAMPOS = [['completo', 'Nome completo'], ['cpf', 'CPF'], ['rg', 'RG'], ['nasc', 'Data de nascimento'], ['email', 'E-mail'], ['tel', 'Telefone'], ['funcao', 'Função'], ['dias', 'Dias']];
+const LEQ_MODELOS = { cred: ['completo', 'cpf', 'nasc', 'email'], login: ['completo', 'email'], doc: ['completo', 'cpf', 'rg'] };
+let LEQ = null;
+async function listaEquipe(key) {
+  const el = document.getElementById('pm');
+  el.innerHTML = '<div class="box"><h3>📋 Lista da equipe</h3><div class="spin" style="margin:18px auto"></div></div>'; el.style.display = 'grid';
+  try { LEQ = await apiGet({ f: 'listaeq', a: ADM, ev: key }); }
+  catch (e) { el.innerHTML = `<div class="box"><h3>📋 Lista da equipe</h3><div style="color:var(--red)">⚠ ${esc(e.message || e)}</div><div class="acts"><button class="btn" onclick="closeP()">Fechar</button></div></div>`; return; }
+  let sel = []; try { sel = JSON.parse(localStorage.getItem('leqCampos') || 'null'); } catch (e) {}
+  LEQ.sel = Array.isArray(sel) && sel.length ? sel : LEQ_MODELOS.cred.slice();
+  try { LEQ.extra = localStorage.getItem('leqExtra') || ''; } catch (e) { LEQ.extra = ''; }
+  listaEquipeDraw();
+}
+function listaEquipeDraw() {
+  const el = document.getElementById('pm'), E = LEQ.evento, P = LEQ.pessoas;
+  const falta = c => P.filter(p => !(c === 'completo' ? (p.completo || p.nome) : p[c])).length;
+  const avisos = LEQ.sel.filter(c => c !== 'completo' && c !== 'funcao' && c !== 'dias').map(c => [c, falta(c)]).filter(x => x[1]);
+  const semCad = P.filter(p => !p.cadastro).map(p => p.nome);
+  el.innerHTML = `<div class="box" style="max-width:560px"><h3>📋 Lista da equipe · ${esc(E.nome)}</h3>
+    <div class="muted" style="font-size:12px">${esc(E.start)}${E.end !== E.start ? ' a ' + esc(E.end) : ''}${E.local ? ' · ' + esc(E.local) : ''} · ${P.length} pessoa(s) na escala</div>
+    <div class="muted" style="font-size:11px;margin-top:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Modelo rápido</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button class="btn" onclick="LEQ.sel=LEQ_MODELOS.cred.slice();listaEquipeDraw()">Nome · CPF · Nascimento · E-mail</button>
+      <button class="btn" onclick="LEQ.sel=LEQ_MODELOS.login.slice();listaEquipeDraw()">Nome · E-mail (login)</button>
+      <button class="btn" onclick="LEQ.sel=LEQ_MODELOS.doc.slice();listaEquipeDraw()">Nome · CPF · RG</button></div>
+    <div class="muted" style="font-size:11px;margin-top:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Colunas</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${LEQ_CAMPOS.map(([c, l]) => `<label style="display:flex;gap:6px;align-items:center;font-size:14px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;margin:0;text-transform:none;color:var(--text)">
+      <input type="checkbox" style="width:auto;margin:0" ${LEQ.sel.indexOf(c) >= 0 ? 'checked' : ''} ${c === 'completo' ? 'disabled' : ''} onchange="leqToggle('${c}',this.checked)">${l}</label>`).join('')}</div>
+    <label style="display:block;margin-top:10px;font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700;letter-spacing:.4px">Coluna extra (opcional) <span style="text-transform:none;font-weight:400">— o título que o cliente pediu; fica em branco para preencher</span>
+      <input id="leqExtra" value="${esc(LEQ.extra)}" placeholder="Ex.: Empresa, Crachá, Assinatura" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px" oninput="LEQ.extra=this.value"></label>
+    ${avisos.length || semCad.length ? `<div style="font-size:12px;color:var(--amber);margin-top:10px">⚠ ${avisos.map(([c, n]) => n + ' sem ' + LEQ_CAMPOS.find(x => x[0] === c)[1]).join(' · ')}${semCad.length ? (avisos.length ? ' · ' : '') + 'sem cadastro: ' + esc(semCad.join(', ')) : ''}. Ficam em branco na planilha (complete na ficha do técnico).</div>` : '<div style="font-size:12px;color:var(--accent);margin-top:10px">✅ Todos com os dados escolhidos.</div>'}
+    <div style="max-height:200px;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:10px;font-size:12px">
+      <table style="width:100%;border-collapse:collapse">${leqLinhas().map((r, i) => `<tr>${r.map(v => `<${i ? 'td' : 'th'} style="padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap">${esc(v)}</${i ? 'td' : 'th'}>`).join('')}</tr>`).join('')}</table></div>
+    <div class="acts"><button class="btn" onclick="closeP()">Fechar</button><button class="btn" onclick="leqBaixar()">⬇ Baixar Excel</button><button class="btn pri" onclick="leqEnviar()">📲 Enviar pelo WhatsApp</button></div></div>`;
+  el.style.display = 'grid';
+}
+function leqToggle(c, on) { const i = LEQ.sel.indexOf(c); if (on && i < 0) LEQ.sel.push(c); if (!on && i >= 0) LEQ.sel.splice(i, 1); LEQ.sel = LEQ_CAMPOS.map(x => x[0]).filter(x => LEQ.sel.indexOf(x) >= 0); listaEquipeDraw(); }
+function leqLinhas() {
+  const cols = LEQ_CAMPOS.filter(x => LEQ.sel.indexOf(x[0]) >= 0), extra = (LEQ.extra || '').trim();
+  const rows = [cols.map(x => x[1]).concat(extra ? [extra] : [])];
+  LEQ.pessoas.forEach(p => rows.push(cols.map(([c]) => c === 'completo' ? (p.completo || p.nome) : (p[c] || '')).concat(extra ? [''] : [])));
+  return rows;
+}
+function leqArquivo() {
+  try { localStorage.setItem('leqCampos', JSON.stringify(LEQ.sel)); localStorage.setItem('leqExtra', LEQ.extra || ''); } catch (e) {}
+  const E = LEQ.evento, nome = ('Equipe - ' + E.nome + (E.os ? ' - ' + E.os : '')).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90) + '.xlsx';
+  return new File([xlsxDe(leqLinhas(), E.nome)], nome, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+function leqBaixar() { const f = leqArquivo(), a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); avisar('⬇ Planilha baixada: ' + f.name); }
+async function leqEnviar() {
+  const f = leqArquivo(), E = LEQ.evento, txt = 'Lista da equipe · ' + E.nome + (E.start ? ' (' + E.start + (E.end !== E.start ? ' a ' + E.end : '') + ')' : '');
+  if (navigator.canShare && navigator.canShare({ files: [f] })) {
+    try { await navigator.share({ files: [f], title: f.name, text: txt }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  leqBaixar();   // computador: baixa a planilha e abre o WhatsApp para anexar
+  setTimeout(() => window.open('https://wa.me/?text=' + encodeURIComponent(txt + '\n(planilha em anexo)'), '_blank'), 600);
+  avisar('A planilha foi baixada. No WhatsApp, escolha a conversa e anexe o arquivo.');
+}
+/* Excel (.xlsx) feito no próprio celular, sem internet extra: planilha simples com cabeçalho em negrito */
+function xlsxDe(rows, aba) {
+  const x = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+  const col = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const larg = rows[0].map((_, c) => Math.min(60, Math.max(10, ...rows.map(r => String(r[c] || '').length + 2))));
+  const sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>' +
+    larg.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols><sheetData>' +
+    rows.map((r, ri) => `<row r="${ri + 1}">` + r.map((v, ci) => `<c r="${col(ci)}${ri + 1}" t="inlineStr"${ri ? '' : ' s="1"'}><is><t xml:space="preserve">${x(v)}</t></is></c>`).join('') + '</row>').join('') +
+    '</sheetData></worksheet>';
+  const nomeAba = x(String(aba || 'Equipe').replace(/[\\/?*\[\]:]/g, ' ').slice(0, 31) || 'Equipe');
+  const files = {
+    '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+    '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+    'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${nomeAba}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+    'xl/_rels/workbook.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+    'xl/styles.xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE3262B"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF999999"/></left><right style="thin"><color rgb="FF999999"/></right><top style="thin"><color rgb="FF999999"/></top><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>',
+    'xl/worksheets/sheet1.xml': sheet
+  };
+  return zipStore(files);
+}
+/* ZIP sem compressão (suficiente para o Excel) */
+function zipStore(files) {
+  const enc = new TextEncoder(), crcT = zipStore.t || (zipStore.t = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; }));
+  const crc = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = crcT[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const partes = [], centrais = []; let off = 0;
+  const u16 = v => [v & 255, (v >>> 8) & 255], u32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  Object.keys(files).forEach(nome => {
+    const n = enc.encode(nome), d = enc.encode(files[nome]), c = crc(d);
+    const loc = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(c), ...u32(d.length), ...u32(d.length), ...u16(n.length), ...u16(0)]);
+    partes.push(loc, n, d);
+    centrais.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(c), ...u32(d.length), ...u32(d.length), ...u16(n.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off)]), n);
+    off += loc.length + n.length + d.length;
+  });
+  const tamC = centrais.reduce((s, p) => s + p.length, 0), qtd = Object.keys(files).length;
+  const fim = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(qtd), ...u16(qtd), ...u32(tamC), ...u32(off), ...u16(0)]);
+  return new Blob([...partes, ...centrais, fim], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
 function convGrupo(ei) {
   const e = CVS.d.eventos[ei], el = document.getElementById('pm');
