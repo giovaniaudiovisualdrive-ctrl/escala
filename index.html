@@ -1445,12 +1445,12 @@ function cadListaDraw() {
     if (f === 'venc' && !(c.vencimentos || []).some(v => v.situacao !== 'OK')) return false;
     if (f === 'agu' && c.status !== 'AGUARDANDO') return false;
     return !q || norm([c.nome, c.apelido, c.completo, c.funcao, c.telFmt, c.equipe, c.nrs, c.bloqueio].join(' ')).includes(q);
-  }).sort((a, b) => a.c.nome.localeCompare(b.c.nome));
+  }).sort((a, b) => (a.c.completo || a.c.nome).localeCompare(b.c.completo || b.c.nome));
   const nDup = window.ACAD.filter(c => (c.duplicados || []).length).length;
   el.innerHTML = (nDup && f !== 'dup' ? `<div class="prow" style="border-color:var(--red);background:rgba(227,38,43,.08)"><div class="g"><b style="color:var(--red)">🟥 ${nDup} cadastro(s) parecem duplicados</b><span class="muted" style="font-size:12px">Mesmo CPF, celular ou nome. Veja e escolha qual manter.</span></div><button class="btn" onclick="AD.cadF='dup';document.getElementById('cadF').value='dup';cadListaDraw()">Ver</button></div>` : '') +
   (lista.length ? lista.map(({ c, i }) => `<div class="prow" style="flex-wrap:wrap;${c.bloqueio || (c.duplicados || []).length ? 'border-color:var(--red)' : ''}${(c.duplicados || []).length ? ';background:rgba(227,38,43,.08)' : ''}"><div class="g" style="flex-basis:100%">
-      <b>${esc(c.nome)}${c.apelido && c.apelido !== c.nome ? ' <span class="muted" style="font-weight:400">(' + esc(c.apelido) + ')</span>' : ''}</b>
-      <span class="muted" style="font-size:12px">${[c.completo, c.telFmt, c.equipe].filter(Boolean).map(esc).join(' · ')}</span>
+      <b>${esc(c.completo || c.nome)}</b>
+      <span class="muted" style="font-size:12px">${['na escala: ' + c.nome + (c.apelido && c.apelido !== c.nome ? ' (' + c.apelido + ')' : ''), c.telFmt, c.equipe].filter(Boolean).map(esc).join(' · ')}</span>
       ${c.funcao ? `<span style="font-size:12px">🎛 ${esc(c.funcao)}</span>` : ''}
       ${c.bloqueio ? `<span style="font-size:12px;color:var(--red);font-weight:700">⛔ ${esc(c.bloqueio)}${c.motivo ? ' · ' + esc(c.motivo) : ''} (não pode ser escalado)</span>` : ''}
       ${(c.vencimentos || []).length ? `<span style="font-size:12px">${c.vencimentos.map(v => `<span style="color:${v.situacao === 'VENCIDA' ? 'var(--red)' : v.situacao === 'VENCE LOGO' ? 'var(--amber)' : 'var(--accent)'}">${esc(v.nome)} ${esc(v.data)}${v.situacao !== 'OK' ? ' (' + v.situacao.toLowerCase() + ')' : ''}</span>`).join(' · ')}</span>` : ''}
