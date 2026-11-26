@@ -259,7 +259,7 @@ select.opsel.none{border-color:var(--amber);color:var(--amber)}
       <div class="grow"></div>
       <span class="live" id="live" title="O painel confere a planilha a cada 15 segundos"><i></i><span id="liveTxt">Ao vivo</span></span>
       <select class="ctl" id="sheetSel" title="Aba da planilha"></select>
-      <button class="btn" id="btnStatus" title="Ajusta EM BREVE / EM EXECUÇÃO / EVENTO FINALIZADO pelas datas">⟳ Status automático</button>
+      <button class="btn" id="btnStatus" title="Ajusta ATENÇÃO (lista a fazer) / EM BREVE / EM EXECUÇÃO / EVENTO FINALIZADO / CANCELADO pela lista e pelas datas">⟳ Status automático</button>
       <button class="btn" id="btnMark" title="Pinta as células em conflito na planilha">⚑ Marcar conflitos</button>
       <button class="btn" id="btnFull" title="Abrir o painel numa aba inteira do navegador">⛶ Tela cheia</button>
       <button class="btn pri" id="btnReload">↻ Atualizar</button>
@@ -318,7 +318,7 @@ function phaseClass(p) {
 const PH_ABBR = { MONT: 'M', ENS: 'E', OP: 'OP', DESM: 'D', FULL: 'M·O·D', SEM: '—' };
 function statusPill(s) {
   const k = norm(s);
-  const cls = k.includes('BREVE') ? 'st-brev' : k.includes('EXEC') ? 'st-exec' : k.includes('FINAL') ? 'st-fin' : 'st-warn';
+  const cls = k.includes('BREVE') ? 'st-brev' : k.includes('EXEC') ? 'st-exec' : k.includes('FINAL') || k.includes('CANCEL') ? 'st-fin' : 'st-warn';
   return `<span class="pill ${cls}">${esc(s || 'SEM STATUS')}</span>`;
 }
 function weekday(day) { const d = new Date(S.data.year, S.data.month, day); return WD[d.getDay()]; }
@@ -496,7 +496,7 @@ function vEvents() {
   $('#content').innerHTML = `
   <div class="toolbar">
     <input class="ctl" id="evQ" placeholder="Buscar evento, OS, local ou técnico…" value="${esc(S.evFilter)}">
-    <div class="seg">${[['all', 'Todos'], ['BREVE', 'Em breve'], ['EXEC', 'Em execução'], ['FINAL', 'Finalizados']].map(([k, l]) => `<button class="${S.evStatus === k ? 'on' : ''}" onclick="S.evStatus='${k}';render()">${l}</button>`).join('')}</div>
+    <div class="seg">${[['all', 'Todos'], ['ATEN', '⚠ Atenção'], ['BREVE', 'Em breve'], ['EXEC', 'Em execução'], ['FINAL', 'Finalizados'], ['CANCEL', 'Cancelados']].map(([k, l]) => `<button class="${S.evStatus === k ? 'on' : ''}" onclick="S.evStatus='${k}';render()">${l}</button>`).join('')}</div>
     <div class="grow"></div><button class="btn pri" onclick="go('create')">＋ Novo evento</button>
   </div>
   <div class="card" style="padding:0;overflow:auto"><table class="tbl"><thead><tr><th>Status</th><th>Evento</th><th>OS</th><th>Local</th><th>Período</th><th>Lista</th><th>Equipe</th><th>Alertas</th></tr></thead><tbody>
