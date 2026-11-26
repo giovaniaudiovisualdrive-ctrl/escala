@@ -497,7 +497,7 @@ function vEvents() {
   <div class="toolbar">
     <input class="ctl" id="evQ" placeholder="Buscar evento, OS, local ou técnico…" value="${esc(S.evFilter)}">
     <div class="seg">${[['all', 'Todos'], ['ATEN', '⚠ Atenção'], ['BREVE', 'Em breve'], ['EXEC', 'Em execução'], ['FINAL', 'Finalizados'], ['CANCEL', 'Cancelados']].map(([k, l]) => `<button class="${S.evStatus === k ? 'on' : ''}" onclick="S.evStatus='${k}';render()">${l}</button>`).join('')}</div>
-    <div class="grow"></div><button class="btn pri" onclick="go('create')">＋ Novo evento</button>
+    <div class="grow"></div><button class="btn" onclick="puxarOS()" title="Cria na escala os eventos das OS novas do Controle de OS">📄 Puxar OS novas</button><button class="btn pri" onclick="go('create')">＋ Novo evento</button>
   </div>
   <div class="card" style="padding:0;overflow:auto"><table class="tbl"><thead><tr><th>Status</th><th>Evento</th><th>OS</th><th>Local</th><th>Período</th><th>Lista</th><th>Equipe</th><th>Alertas</th></tr></thead><tbody>
   ${evs.map(e => `<tr class="click" onclick="showEvent(${e.id})">
@@ -535,7 +535,7 @@ async function addDay(row) {
 }
 async function saveEvent(row) {
   const v = id => $('#' + id).value;
-  await run('editarEvento', [{ sheet: S.sheet, row, nome: v('eNome'), os: v('eOs'), local: v('eLocal'), lista: v('eLista'), status: v('eStatus'), start: v('eStart'), end: v('eEnd') }]);
+  await run('editarEvento', [{ sheet: S.sheet, row, nome: v('eNome'), os: v('eOs'), vendedor: v('eVend'), local: v('eLocal'), lista: v('eLista'), status: v('eStatus'), start: v('eStart'), end: v('eEnd') }]);
   S.drawerEdit = false; toast('✅ Dados do evento salvos na planilha.'); load(null, true);
 }
 function showEvent(id, keep) {
@@ -560,6 +560,7 @@ function showEvent(id, keep) {
     ${S.drawerEdit ? `<div class="ef">
       <div class="field"><label>Nome</label><input class="ctl" id="eNome" value="${esc(e.nome)}"></div>
       <div class="field"><label>OS</label><input class="ctl" id="eOs" value="${esc(e.os)}"></div>
+      <div class="field"><label>Vendedor</label><input class="ctl" id="eVend" value="${esc(e.vendedor || '')}" placeholder="GG, MR, DG…"></div>
       <div class="field"><label>Local</label><input class="ctl" id="eLocal" value="${esc(e.local)}"></div>
       <div class="field"><label>Status</label><select class="ctl" id="eStatus"><option value="AUTO">Automático (pelas datas)</option>${O.status.map(s => `<option ${s === e.status ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
       <div class="field"><label>Início</label><input class="ctl" type="date" id="eStart" value="${esc(e.startIso)}"></div>
@@ -1011,6 +1012,11 @@ async function saveOps(row) {
   await run('definirOperacao', [{ sheet: S.sheet, row, map }]);
   toast('✅ Operação salva na planilha.'); load(null, true);
 }
+async function puxarOS() {
+  toast('Lendo o Controle de OS…');
+  const r = await run('sincronizarOS', []);
+  alert(r.msg || 'Pronto.'); load(null, true);
+}
 async function fixStatus() {
   const r = await run('atualizarStatus', [S.sheet]); toast(`✅ ${r.changed} status atualizado(s) na planilha.`); load();
 }
@@ -1127,6 +1133,7 @@ function vCreate() {
     <div class="field"><label>Nome do evento</label><input class="ctl" id="cNome" value="${esc(C.nome)}" placeholder="Ex.: CONVENÇÃO XPTO"></div>
     <div class="f2"><div class="field"><label>OS</label><input class="ctl" id="cOs" value="${esc(C.os)}" placeholder="OS-26024"></div>
     <div class="field"><label>Local</label><input class="ctl" id="cLocal" value="${esc(C.local)}" placeholder="BTT"></div></div>
+    <div class="field"><label>Vendedor (sigla)</label><input class="ctl" id="cVend" value="${esc(C.vendedor || '')}" placeholder="GG, MR, DG…"></div>
     <div class="f3"><div class="field"><label>Lista</label><select class="ctl" id="cLista">${D.options.lista.map(l => `<option ${l === C.lista ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
     <div class="field"><label>Início</label><input class="ctl" type="date" id="cStart" value="${esc(C.start)}"></div>
     <div class="field"><label>Fim</label><input class="ctl" type="date" id="cEnd" value="${esc(C.end)}"></div></div>
@@ -1153,7 +1160,7 @@ function vCreate() {
     }).join('')}</div>` : ''}
   </div></div>`;
   const bind = (id, k) => { const el = $('#' + id); el.oninput = () => { C[k] = el.value; }; };
-  bind('cNome', 'nome'); bind('cOs', 'os'); bind('cLocal', 'local'); bind('cCoord', 'coord');
+  bind('cNome', 'nome'); bind('cOs', 'os'); bind('cVend', 'vendedor'); bind('cLocal', 'local'); bind('cCoord', 'coord');
   bind('cEnd2', 'endereco'); bind('cAcesso', 'acesso'); bind('cEntrada', 'entrada'); bind('cIni', 'inicio'); bind('cTer', 'termino'); bind('cPrev', 'previsao');
   $('#cCoordTec').onchange = ev => { C.coordTec = ev.target.checked; render(); };
   $('#cLista').onchange = ev => C.lista = ev.target.value;
@@ -1162,7 +1169,7 @@ function vCreate() {
   if ($('#cPh')) $('#cPh').onchange = ev => { C.phases[ev.target.dataset.d] = ev.target.value; render(); };
   $('#cGo').onclick = async () => {
     if (!C.nome.trim()) return toast('Informe o nome do evento.', true);
-    const r = await run('criarEvento', [{ sheet: S.sheet, nome: C.nome, os: C.os, local: C.local, lista: C.lista, start: C.start, end: C.end, phases: C.phases, coord: C.coord || '',
+    const r = await run('criarEvento', [{ sheet: S.sheet, nome: C.nome, os: C.os, vendedor: C.vendedor || '', local: C.local, lista: C.lista, start: C.start, end: C.end, phases: C.phases, coord: C.coord || '',
       endereco: C.endereco || '', acesso: C.acesso || '', entrada: C.entrada || '', inicio: C.inicio || '', termino: C.termino || '', previsao: C.previsao || '' }]);
     toast(`✅ Evento criado na linha ${r.row}.` + ((r.semTel || []).length ? ` Sem celular para o QR: ${esc(r.semTel.join(', '))} (cadastre o celular e adicione em 📍 Local).` : '') + (r.avisoInfo ? ' ⚠ ' + esc(r.avisoInfo) : ''), !!(r.semTel || []).length || !!r.avisoInfo); S.create = null; await load(); const ne = S.data.events.find(e => e.row === r.row); if (ne) { S.assign.row = ne.row; S.assign.days = ne.activeDays.slice(); go('assign'); }
   };
