@@ -1462,6 +1462,166 @@ function cadListaDraw() {
     <button class="btn" onclick="copiar(window.ACAD[${i}].link)">Copiar link</button>
     <button class="btn" onclick="admCadDel(${i})">🗑</button></div>`).join('') : '<div class="muted" style="padding:10px 0">Nenhum técnico encontrado.</div>');
 }
+/* ---------- Pendências de cadastro: quem está escalado e falta cadastro / telefone ---------- */
+function pendCadHtml(L) {
+  window.APC = L;
+  if (!L.length) return `<div class="card"><h3 style="margin:0;font-size:15px">✅ Todos os escalados de hoje em diante têm cadastro e telefone</h3></div>`;
+  const cor = f => /TELEFONE|SEM CADASTRO/.test(f) ? 'var(--red)' : 'var(--amber)';
+  return `<div class="card" style="border-color:var(--amber)"><h3 style="margin:0 0 4px;font-size:15px">⚠ Escalados com cadastro pendente · ${L.length}</h3>
+    <div class="muted" style="font-size:12px">Pessoas que já estão nas escalas (de hoje em diante) e ainda não têm cadastro, não preencheram ou estão sem celular. Sem celular a convocação e os avisos não chegam.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"><button class="btn" onclick="pendCadBaixar()">⬇ Baixar lista em Excel</button><button class="btn" onclick="pendCadCopiar()">📋 Copiar lista (WhatsApp)</button></div>
+    ${L.map((p, i) => `<div class="prow" style="flex-wrap:wrap"><div class="g" style="flex-basis:100%"><b>${esc(p.nome)}</b>
+      <span style="font-size:12px">${p.falta.map(f => `<span style="color:${cor(f)};font-weight:700">${esc(f)}</span>`).join(' · ')}${p.telFmt ? ' · ' + esc(p.telFmt) : ''}</span>
+      <span class="muted" style="font-size:12px">${p.nEventos} evento(s): ${esc(p.eventos.join(', '))}${p.nEventos > p.eventos.length ? '…' : ''}</span></div>
+      ${p.cadId ? `<button class="btn pri" onclick="admCadEditar(window.ACAD.findIndex(c => c.id === window.APC[${i}].cadId))">✏ Ficha</button>` : `<button class="btn pri" onclick="pendCadNovo(${i})">➕ Cadastrar</button>`}</div>`).join('')}</div>`;
+}
+function pendCadNovo(i) {
+  const p = window.APC[i], n = document.getElementById('cdN'), w = document.getElementById('cdW');
+  n.value = p.nome; if (p.telFmt) w.value = p.telFmt;
+  n.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => (p.telFmt ? n : w).focus(), 300);
+}
+function pendCadLinhas() { return [['NOME NA ESCALA', 'FALTA', 'CELULAR', 'EVENTOS']].concat(window.APC.map(p => [p.nome, p.falta.join(', '), p.telFmt || '', p.eventos.join(', ')])); }
+function pendCadBaixar() {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([xlsxDe(pendCadLinhas(), 'Pendências')], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = 'Cadastros pendentes ' + new Date().toLocaleDateString('pt-BR').replace(/\//g, '-') + '.xlsx'; a.click();
+}
+function pendCadCopiar() {
+  copiar('*Cadastros pendentes*\n' + window.APC.map(p => '• ' + p.nome + ' — ' + p.falta.join(', ').toLowerCase()).join('\n') + '\n\nPreciso de: nome completo, CPF, RG, data de nascimento, celular, e-mail, PIX e endereço.');
+}
+
+/* ---------- Importar Excel (.xlsx / .csv) de técnicos ---------- */
+const IMP = { cols: null, linhas: null, map: null, nome: '', res: null, rodando: false };
+const IMP_CAMPOS = [['', '— ignorar —'], ['apelido', 'Nome na escala / apelido'], ['completo', 'Nome completo'], ['cpf', 'CPF'], ['rg', 'RG'], ['cnpj', 'CNPJ'],
+  ['tel', 'Celular / WhatsApp'], ['email', 'E-mail'], ['nasc', 'Data de nascimento'], ['pix', 'PIX'], ['endereco', 'Endereço'], ['funcao', 'Função(ões)'], ['cache', 'Cachê / valor'],
+  ['nrs', 'NRs'], ['contato', 'Contato de emergência (nome)'], ['telEmerg', 'Telefone de emergência']];
+async function lerXlsx(buf) {
+  const dv = new DataView(buf); let e = buf.byteLength - 22;
+  while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('O arquivo não parece um .xlsx. Salve como Excel (.xlsx) ou CSV.');
+  const n = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true); const ents = {};
+  for (let i = 0; i < n; i++) {
+    const meth = dv.getUint16(p + 10, true), csz = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    ents[new TextDecoder().decode(new Uint8Array(buf, p + 46, nl))] = { meth, csz, off }; p += 46 + nl + xl + cl;
+  }
+  const ler = async nome => {
+    const f = ents[nome]; if (!f) return null;
+    const lnl = dv.getUint16(f.off + 26, true), lxl = dv.getUint16(f.off + 28, true), data = new Uint8Array(buf, f.off + 30 + lnl + lxl, f.csz);
+    if (f.meth === 0) return new TextDecoder().decode(data);
+    return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  };
+  const xml = t => new DOMParser().parseFromString(t, 'application/xml');
+  const ssT = await ler('xl/sharedStrings.xml'), ss = ssT ? [...xml(ssT).getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
+  const folhas = Object.keys(ents).filter(k => /^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort((a, b) => +a.match(/\d+/)[0] - +b.match(/\d+/)[0]);
+  if (!folhas.length) throw new Error('Não achei nenhuma aba no arquivo.');
+  const idx = r => { let c = 0; for (const ch of r.replace(/\d+/g, '')) c = c * 26 + ch.charCodeAt(0) - 64; return c - 1; };
+  const linhas = [];
+  for (const row of xml(await ler(folhas[0])).getElementsByTagName('row')) {
+    const L = [];
+    for (const c of row.getElementsByTagName('c')) {
+      const t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0], is = c.getElementsByTagName('is')[0];
+      let val = t === 's' ? ss[+(v && v.textContent)] : t === 'inlineStr' ? (is ? [...is.getElementsByTagName('t')].map(x => x.textContent).join('') : '') : (v ? v.textContent : '');
+      L[idx(c.getAttribute('r') || '')] = val == null ? '' : val;
+    }
+    linhas.push(Array.from(L, x => x == null ? '' : String(x)));
+  }
+  return linhas;
+}
+function lerCsv(t) {
+  t = t.replace(/^﻿/, ''); const sep = (t.split('\n')[0].match(/;/g) || []).length >= (t.split('\n')[0].match(/,/g) || []).length ? ';' : ',';
+  const out = []; let L = [], f = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (q) { if (ch === '"' && t[i + 1] === '"') { f += '"'; i++; } else if (ch === '"') q = false; else f += ch; }
+    else if (ch === '"') q = true; else if (ch === sep) { L.push(f); f = ''; } else if (ch === '\n') { L.push(f.replace(/\r$/, '')); out.push(L); L = []; f = ''; } else f += ch;
+  }
+  if (f || L.length) { L.push(f); out.push(L); }
+  return out;
+}
+function impAdivinhar(h) {
+  const k = norm(h), fun = (AD.d.opcoesFuncao || []).concat(['COORDENADOR']).find(f => norm(f) === k);
+  if (!k) return '';
+  if (fun) return 'f:' + fun;
+  if (/APELIDO|NOME NA ESCALA|NOME ESCALA|NOME DE GUERRA|NOME CURTO|COMO E CHAMADO/.test(k)) return 'apelido';
+  if (/EMERG/.test(k)) return /NOME/.test(k) ? 'contato' : 'telEmerg';
+  if (/NOME DO CONTATO|CONTATO DE/.test(k)) return 'contato';
+  if (/NOME|COLABORADOR|PRESTADOR|TECNICO|PROFISSIONAL/.test(k)) return 'completo';
+  if (/CNPJ/.test(k) && !/CPF/.test(k)) return 'cnpj';
+  if (/CPF/.test(k)) return 'cpf';
+  if (/^RG\b|IDENTIDADE|^R\.G/.test(k)) return 'rg';
+  if (/MAIL/.test(k)) return 'email';
+  if (/NASC|ANIVERS/.test(k)) return 'nasc';
+  if (/PIX/.test(k)) return 'pix';
+  if (/ENDERE/.test(k)) return 'endereco';
+  if (/CEL|TEL|FONE|WHATS|ZAP/.test(k)) return 'tel';
+  if (/^NR|NORMA/.test(k)) return 'nrs';
+  if (/FUNC|CARGO|ATIVIDADE|ESPECIALIDADE/.test(k)) return 'funcao';
+  if (/CACH|VALOR|DIARIA|PRECO/.test(k)) return 'cache';
+  return '';
+}
+async function impArquivo(file) {
+  if (!file) return;
+  const box = document.getElementById('impBox'); box.innerHTML = '<div class="muted" style="margin-top:8px">Lendo o arquivo…</div>';
+  try {
+    const rows = /\.csv$/i.test(file.name) ? lerCsv(await file.text()) : await lerXlsx(await file.arrayBuffer());
+    let h = rows.findIndex((r, i) => i < 15 && r.filter(c => impAdivinhar(c)).length >= 2);
+    if (h < 0) h = 0;
+    IMP.cols = rows[h].map(c => String(c || '').trim());
+    IMP.linhas = rows.slice(h + 1).map((r, i) => ({ r, n: h + i + 2 })).filter(x => x.r.some(c => String(c).trim()));
+    IMP.map = IMP.cols.map(impAdivinhar); IMP.nome = file.name; IMP.res = null;
+    impDraw();
+  } catch (e) { box.innerHTML = `<div class="msg-err">⚠ ${esc(e.message || e)}</div>`; }
+}
+function impDraw() {
+  const box = document.getElementById('impBox'); if (!box || !IMP.cols) return;
+  const opts = sel => IMP_CAMPOS.map(([v, l]) => `<option value="${v}" ${sel === v ? 'selected' : ''}>${l}</option>`).join('') +
+    (AD.d.opcoesFuncao || []).concat(['COORDENADOR']).map(f => `<option value="f:${esc(f)}" ${sel === 'f:' + f ? 'selected' : ''}>Cachê de ${esc(f)}</option>`).join('');
+  const ex = IMP.linhas.slice(0, 2);
+  box.innerHTML = `<div style="margin-top:10px"><b>${esc(IMP.nome)}</b> · ${IMP.linhas.length} linha(s). Confira o que é cada coluna:</div>
+    ${IMP.cols.map((c, j) => c || ex.some(x => x.r[j]) ? `<div class="prow" style="flex-wrap:wrap"><div class="g"><b>${esc(c || 'coluna ' + (j + 1))}</b><span class="muted" style="font-size:12px">ex.: ${esc(ex.map(x => x.r[j] || '—').join(' | '))}</span></div>
+      <select data-j="${j}" class="impSel" style="flex:0 0 auto;margin:0;max-width:240px">${opts(IMP.map[j])}</select></div>` : '').join('')}
+    <div id="impMsg"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn pri" id="impGo" ${IMP.rodando ? 'disabled' : ''}>📥 Importar ${IMP.linhas.length} técnico(s)</button><button class="btn" onclick="IMP.cols=null;document.getElementById('impBox').innerHTML='';document.getElementById('impArq').value=''">Cancelar</button></div>
+    ${IMP.res ? impResHtml(IMP.res) : ''}`;
+  box.querySelectorAll('.impSel').forEach(s => s.onchange = () => { IMP.map[+s.dataset.j] = s.value; });
+  document.getElementById('impGo').onclick = impRodar;
+}
+function impLinha(x) {
+  const o = { linha: x.n, funcoes: [] }; let funcs = [], cache = '';
+  IMP.map.forEach((m, j) => {
+    let v = String(x.r[j] == null ? '' : x.r[j]).trim(); if (!m || !v) return;
+    if (m === 'nasc' && /^\d{4,5}(\.\d+)?$/.test(v)) { const d = new Date(Math.round((+v - 25569) * 864e5)); v = d.toISOString().slice(0, 10).split('-').reverse().join('/'); }
+    if ((m === 'cpf' || m === 'tel' || m === 'telEmerg') && /e\+?\d+$/i.test(v)) v = String(Math.round(+v));
+    if (m.startsWith('f:')) { if (v.replace(/[^\d]/g, '')) o.funcoes.push({ funcao: m.slice(2), valor: v }); return; }
+    if (m === 'funcao') { funcs = funcs.concat(v.split(/[\/;,+]| E /i).map(f => f.trim()).filter(Boolean)); return; }
+    if (m === 'cache') { cache = v; return; }
+    o[m] = o[m] ? o[m] + ' ' + v : v;
+  });
+  funcs.forEach(f => o.funcoes.push({ funcao: f, valor: cache }));
+  if (!funcs.length && cache && o.funcoes.length === 0) o.cacheSemFuncao = cache;
+  return o;
+}
+async function impRodar() {
+  if (IMP.rodando) return;
+  if (!IMP.map.some(m => m === 'completo' || m === 'apelido')) return alert('Marque qual coluna é o nome (nome completo ou nome na escala).');
+  const linhas = IMP.linhas.map(impLinha).filter(o => o.completo || o.apelido);
+  if (!confirm('Importar ' + linhas.length + ' técnico(s)? Quem já tem cadastro só recebe os dados que estiverem faltando.')) return;
+  IMP.rodando = true; const tot = { novos: 0, atualizados: 0, iguais: 0, erros: [], avisos: [] };
+  try {
+    for (let i = 0; i < linhas.length; i += 20) {
+      document.getElementById('impMsg').innerHTML = `<div class="muted" style="margin-top:8px">Importando ${Math.min(i + 20, linhas.length)} de ${linhas.length}…</div>`;
+      const r = await admPost({ acao: 'adm_cad_importar', linhas: linhas.slice(i, i + 20) });
+      tot.novos += r.novos; tot.atualizados += r.atualizados; tot.iguais += r.iguais; tot.erros.push(...r.erros); tot.avisos.push(...r.avisos);
+    }
+    IMP.res = tot; avisar('✅ Importação concluída');
+  } catch (e) { tot.erros.push(e.message || String(e)); IMP.res = tot; }
+  IMP.rodando = false;
+  await admCarregar(); admDraw();
+}
+function impResHtml(r) {
+  return `<div class="card" style="margin-top:10px;border-color:var(--accent)"><b>Resultado:</b> ${r.novos} novo(s) · ${r.atualizados} atualizado(s) · ${r.iguais} sem novidade${r.erros.length ? ' · <b style="color:var(--red)">' + r.erros.length + ' com erro</b>' : ''}
+    ${r.erros.length ? `<div style="font-size:12px;color:var(--red);margin-top:6px">${r.erros.map(esc).join('<br>')}</div>` : ''}
+    ${r.avisos.length ? `<div style="font-size:12px;color:var(--amber);margin-top:6px">${r.avisos.map(esc).join('<br>')}</div>` : ''}</div>`;
+}
 async function admCadMesclar(manter, remover) {
   const a = window.ACAD.find(x => x.id === manter), b = window.ACAD.find(x => x.id === remover);
   if (!confirm('Manter ' + a.nome + ' e juntar com ' + b.nome + '?\n\nOs campos vazios de ' + a.nome + ' recebem os dados de ' + b.nome + ' (funções somadas). O cadastro de ' + b.nome + ' vai para a 🗑 Lixeira (dá para restaurar).')) return;
@@ -1603,6 +1763,11 @@ function admDraw() {
         <label>Celular (WhatsApp)<input id="cdW" type="tel" inputmode="tel" placeholder="(11) 99999-8888"></label></div>
       <div id="cdMsg"></div><button class="btn pri" style="margin-top:12px" id="cdGo">➕ Gerar link de cadastro</button>
       </div>
+    ${pendCadHtml(D.pendCad || [])}
+    <div class="card"><h3 style="margin:0 0 6px;font-size:15px">📥 Importar técnicos de um Excel</h3>
+      <div class="muted" style="font-size:12px">Escolha o arquivo (.xlsx ou .csv). O app reconhece as colunas pelo título: nome, apelido, CPF, RG, telefone, e-mail, nascimento, PIX, endereço, função e cachê (também aceita uma coluna por função, com o valor de cada uma). Quem já tem cadastro (mesmo CPF, celular ou nome) só recebe o que estiver faltando; quem não tem vira cadastro novo.</div>
+      <input type="file" id="impArq" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="margin-top:10px">
+      <div id="impBox"></div></div>
     ${window.ACAD.length ? `<div class="card"><h3 style="margin:0 0 6px;font-size:15px">🗂 Banco de técnicos <span class="muted" style="font-size:12px;font-weight:400">(${window.ACAD.length})</span></h3>
       <div class="muted" style="font-size:12px">Toque em <b>✏ Ficha</b> para ver e editar tudo do técnico: documentos, funções habilitadas, NRs e validades, veículo, avaliação e bloqueio.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><input id="cadQ" placeholder="🔎 Buscar por nome, apelido, função, CPF, placa…" style="flex:1;min-width:200px;margin:0" value="${esc(AD.cadQ || '')}" oninput="AD.cadQ=this.value;cadListaDraw()">
@@ -1699,6 +1864,8 @@ function admDraw() {
   if (AD.tab === 'coordg') {
     window.ACX = D.cacheLista || [];
     cadListaDraw();
+    document.getElementById('impArq').onchange = ev => impArquivo(ev.target.files[0]);
+    if (IMP.cols) impDraw();
     document.getElementById('rfGo').onclick = async () => {
       const v = id => document.getElementById(id).value;
       try { const r = await admPost({ acao: 'adm_refeicao', almoco: v('rfA'), janta: v('rfJ'), jantaApos: v('rfH'), obs: v('rfO') }); avisar('✅ ' + r.msg); await admCarregar(); admDraw(); } catch (e) { alert(e.message || e); }
