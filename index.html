@@ -791,6 +791,7 @@ async function abrirContestacao(ctx) {
     b.disabled = true; document.getElementById('ctMsg').innerHTML = '<div class="muted" style="margin-top:10px">Enviando…</div>';
     try {
       const body = Object.assign({ acao: 'cont_enviar', quinzena: v('ctQ'), evento: v('ctE'), trab: v('ctT'), receb: v('ctR'), desc: v('ctD'), tel: v('ctW') }, ctx.t ? { t: ctx.t } : { e: ctx.e, cv: chatConv(), nome: v('ctN') });
+      if (ctx.e && !nomeCompleto(v('ctN'))) throw new Error('Digite seu nome completo (nome e sobrenome). Ex.: MARCELO DA SILVA SANTOS');
       const r = await apiPost(body);
       if (ctx.e && v('ctN')) lsSet('ponto_nome', v('ctN')); lsSet('ponto_wa', v('ctW'));
       avisar('✅ Contestação enviada'); abrirContestacao(ctx);
@@ -845,7 +846,7 @@ function abrirPonto(o) {
     ${o.dia ? `<div class="qrok" style="margin:12px 0 0;${o.dia < hojeL ? 'background:rgba(245,184,61,.15);color:var(--amber)' : ''}">📅 Dia ${diaBr(o.dia)}${o.dia === hojeL ? ' (hoje)' : ''}</div>` : ''}
     ${passado ? '<div class="muted" style="font-size:12px;margin-top:6px">Dia que já passou: coloque a entrada e, se já terminou, a saída desse dia. Cada dia tem o seu registro.</div>' : ''}
     ${o.acao === 'checkout' && o.abertos && o.abertos.length ? `<label>Seu check-in<select id="pAb"><option value="">Selecione seu nome…</option>${o.abertos.map(a => `<option value="${esc(a.id)}" ${a.id === o.id ? 'selected' : ''}>${esc(a.nome)} · entrada ${esc(a.in)}</option>`).join('')}<option value="__outro">Meu nome não está na lista</option></select></label>` : ''}
-    ${o.pedirNome ? `<label id="pNomeL" ${o.acao === 'checkout' && o.abertos && o.abertos.length ? 'style="display:none"' : ''}>Seu nome completo<input id="pNome" value="${esc(o.nome || lsGet('ponto_nome') || '')}" autocomplete="name" placeholder="Ex.: JOÃO DA SILVA"></label>` : ''}
+    ${o.pedirNome ? `<label id="pNomeL" ${o.acao === 'checkout' && o.abertos && o.abertos.length ? 'style="display:none"' : ''}>Seu nome completo <span style="text-transform:none;font-weight:400">(nome e sobrenome, igual ao cadastro)</span><input id="pNome" value="${esc(o.nome || lsGet('ponto_nome') || '')}" autocomplete="name" autocapitalize="characters" placeholder="Ex.: MARCELO DA SILVA SANTOS"></label>` : ''}
     ${o.acao === 'checkin' ? `<label>Sua função<input id="pRole" list="dlFun" value="${esc(o.role || lsGet('ponto_funcao') || '')}" placeholder="Ex.: LED, PPT, VMIX, APOIO" autocapitalize="characters"></label>
       <datalist id="dlFun">${['COORDENADOR', 'PPT', 'RESOLUME', 'PROCESSAMENTO', 'PROCESSAMENTO/RESOLUME', 'VMIX', 'ZOOM/TEAMS/G.MEET', 'MEDIA DESK', 'SOM', 'MICROFONISTA', 'ROADIE', 'TÉCNICO AV (ÁUDIO E VÍDEO)', 'ASSIST. TÉCNICO SOM', 'LUZ', 'ASSIST. TÉCNICO LUZ', 'MONTADOR DE PALCO', 'CARREGADOR', 'APOIO', 'OPERADOR CAMERA', 'LED', 'TV E APOIO', 'ASSISTENTE TÉCNICO'].map(x => `<option value="${x}">`).join('')}</datalist>` : ''}
     ${o.motorista ? '<div class="qrok" style="margin:12px 0 0;background:rgba(245,184,61,.15);color:var(--amber)">Use quando você estiver dirigindo a trabalho, levando a equipe. Não precisa de QR Code.</div>' : ''}
@@ -881,7 +882,7 @@ function abrirPonto(o) {
     if (rl) lsSet('ponto_funcao', body.role);
     if (ab && ab.value && ab.value !== '__outro') { body.id = ab.value; body.nome = (o.abertos.find(a => a.id === ab.value) || {}).nome || ''; }
     else if (ab && !ab.value) { msg.innerHTML = '<div class="msg-err">Selecione o seu nome na lista.</div>'; return; }
-    else if (o.pedirNome) { body.nome = document.getElementById('pNome').value.trim(); if (body.nome.length < 3) { msg.innerHTML = '<div class="msg-err">Digite seu nome completo.</div>'; return; } lsSet('ponto_nome', body.nome); }
+    else if (o.pedirNome) { body.nome = document.getElementById('pNome').value.replace(/\s+/g, ' ').trim(); if (!nomeCompleto(body.nome)) { msg.innerHTML = '<div class="msg-err">Digite seu nome completo (nome e sobrenome). Ex.: MARCELO DA SILVA SANTOS</div>'; document.getElementById('pNome').focus(); return; } lsSet('ponto_nome', body.nome); }
     if (o.acao === 'checkout' || saida) {
       body.almoco = document.getElementById('pAlm').value; body.janta = document.getElementById('pJan').value;
       if (!body.almoco || !body.janta) { msg.innerHTML = '<div class="msg-err">Informe como foi o almoço e a janta.</div>'; return; }
@@ -1252,6 +1253,8 @@ function copiar(t) {
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(() => avisar('📋 Copiado.'), () => prompt('Copie:', t));
   else prompt('Copie:', t);
 }
+/* nome e sobrenome: pelo menos duas palavras de verdade (DA, DE, DO, DOS, DAS e E não contam) */
+function nomeCompleto(n) { return norm(n).split(' ').filter(w => w.length >= 2 && !['DA', 'DE', 'DO', 'DAS', 'DOS', 'E'].includes(w)).length >= 2; }
 function avisar(m) { document.querySelectorAll('.msg-ok.av').forEach(x => x.remove()); const t = document.createElement('div'); t.className = 'msg-ok av'; t.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:40'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 2500); }
 const mapa = s => { const m = String(s || '').match(/(-?\d+\.\d+),(-?\d+\.\d+)/); return m ? `<a href="https://www.google.com/maps?q=${m[1]},${m[2]}" target="_blank" style="text-decoration:none" title="${esc(s)}">📍</a>` : ''; };
 async function admCarregar() { AD.d = await apiGet(Object.assign({ f: 'adm', a: ADM }, AD.todos ? { dias: '0' } : {})); }
@@ -2672,7 +2675,7 @@ function chatAbrir() { CH.aberto = true; chatDesenhar(); chatCarregar(); }
 function chatFechar() { CH.aberto = false; chatDesenhar(); }
 async function chatMandar() {
   const nEl = document.getElementById('chNome');
-  if (nEl) { const n = nEl.value.trim(); if (n.length < 3) return alert('Digite seu nome completo.'); lsSet('ponto_nome', n); }
+  if (nEl) { const n = nEl.value.replace(/\s+/g, ' ').trim(); if (!nomeCompleto(n)) return alert('Digite seu nome completo (nome e sobrenome). Ex.: MARCELO DA SILVA SANTOS'); lsSet('ponto_nome', n); }
   const t = document.getElementById('chTxt').value.trim(); if (!t) return;
   const fila = JSON.parse(lsGet('chat_fila') || '[]'); fila.push({ texto: t }); lsSet('chat_fila', JSON.stringify(fila));
   document.getElementById('chTxt').value = '';
