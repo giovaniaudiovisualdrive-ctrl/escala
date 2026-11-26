@@ -1973,7 +1973,7 @@ async function admLocalExcluir(nome) {
 async function admChatCarregar() {
   try { AD.chat = await apiGet({ f: 'chatadm', a: ADM, cv: AD.conv || '' }); } catch (e) { return; }
   const a = document.activeElement;
-  if (AD.d && !(a && (a.id === 'admTxt' || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) && document.getElementById('pm').style.display !== 'grid') admDraw();
+  if (AD.d && !admSubtela() && !(a && (a.id === 'admTxt' || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) && document.getElementById('pm').style.display !== 'grid') admDraw();
 }
 function admAbrirConv(c) { AD.conv = c; AD.txt = ''; AD.chat = Object.assign({}, AD.chat, { msgs: [] }); admDraw(); admChatCarregar(); }
 /* ----- convocação pelo WhatsApp (ADM): mensagem pronta, um a um ou fila "enviar para todos" ----- */
@@ -2204,7 +2204,7 @@ async function initAdm() {
     const novo = JSON.stringify(AD.d); try { localStorage.setItem(ck, novo); } catch (e) { /* cheio: ignora */ }
     const digitando = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
     AD.velho = false;
-    if ((novo !== velho || velho) && !digitando) admDraw(); else { const v = document.getElementById('admVelho'); if (v) v.remove(); }
+    if ((novo !== velho || velho) && !digitando && !admSubtela()) admDraw(); else { const v = document.getElementById('admVelho'); if (v) v.remove(); }
     admChatCarregar();
   }
   catch (e) { if (!AD.d) document.getElementById('app').innerHTML = `<div class="empty">⚠ ${esc(e.message || e)}</div>`; }
@@ -2348,12 +2348,16 @@ function fichaLer() {
   return o;
 }
 /* ADM: editar o cadastro de qualquer técnico */
+/* ficha aberta: a atualização automática (chat, dados novos) não pode trocar a tela */
+function admSubtela() { return !!AD.sub || !!document.getElementById('fGo'); }
 async function admCadEditar(i) {
   const c = window.ACAD[i], app = document.getElementById('app');
+  if (!c) return avisar('⚠ Cadastro não encontrado. Atualize a página.');
+  AD.sub = 'ficha';
   app.innerHTML = '<div class="card" style="margin-top:20px"><div class="spin" style="margin:18px auto"></div></div>';
   let D;
-  try { D = await apiGet({ f: 'meucad', a: ADM, id: c.id }); } catch (e) { avisar('⚠ ' + (e.message || e)); admDraw(); return; }
-  const voltar = async () => { await admCarregar(); admDraw(); };
+  try { D = await apiGet({ f: 'meucad', a: ADM, id: c.id }); } catch (e) { AD.sub = null; avisar('⚠ ' + (e.message || e)); admDraw(); return; }
+  const voltar = async () => { AD.sub = null; await admCarregar(); admDraw(); };
   cadForm(app, D, { titulo: 'Ficha do técnico', sub: c.nome + (c.status ? ' · ' + c.status.toLowerCase() : ''), botao: '💾 Salvar ficha', ok: 'Ficha salva!', parcial: true, ficha: true,
     texto: 'Edição pela administração: pode salvar com campos em branco. Em “Funções” ficam as funções em que ele está habilitado (o valor é opcional; com valor, vai para “Funções e cachês”).',
     voltar, enviar: async dados => (await admPost({ acao: 'adm_cad_editar', id: c.id, dados })).msg });
